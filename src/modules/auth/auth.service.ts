@@ -4,7 +4,7 @@ import { AuthResponseDTO } from "./dto/auth-reponse-dto.js";
 import { LoginDTO } from "./dto/login.dto.js";
 import { RegisterDTO } from "./dto/register.dto.js";
 import { IUser } from "./interface/user.interface.js";
-import { sign } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 
@@ -49,7 +49,7 @@ export const login = async (dto: LoginDTO): Promise<AuthResponseDTO> => {
     throw error;
   }
 
-  const token = sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1d' });
+  const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1d' });
 
   return {
     user: {

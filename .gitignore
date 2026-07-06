@@ -1,0 +1,16 @@
+# Zależności
+node_modules/
+
+# Skompilowany kod
+dist/
+generated/
+
+# Zmienne środowiskowe (KRYTYCZNE)
+.env
+
+# Logi i śmieci systemowe
+npm-debug.log*
+.DS_Store
+
+# Prisma
+.prisma/

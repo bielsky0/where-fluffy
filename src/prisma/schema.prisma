@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String     @id @default(uuid())
+  email       String     @unique
+  password    String
+  name        String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  // Relacje odwrotne (Prisma ich wymaga do mapowania)
+  pets        Pet[]
+  comments    Comment[]
+  ownerChats  ChatRoom[] @relation("OwnerChats")
+  finderChats ChatRoom[] @relation("FinderChats")
+  messages    Message[]
+}
+
+model Pet {
+  id        String    @id @default(uuid())
+  name      String
+  species   String
+  status    String    @default("LOST")
+  latitude  Float
+  longitude Float
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  // Relacja z właścicielem
+  ownerId   String
+  owner     User      @relation(fields: [ownerId], references: [id])
+  
+  // Relacje do komentarzy i czatów
+  comments  Comment[]
+  chats     ChatRoom[]
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  message   String
+  type      String   // "sighted" | "area_checked_empty" | "general"
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  petId     String
+  pet       Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model ChatRoom {
+  id        String    @id @default(uuid())
+  petId     String
+  pet       Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  
+  ownerId   String
+  owner     User      @relation("OwnerChats", fields: [ownerId], references: [id])
+  finderId  String
+  finder    User      @relation("FinderChats", fields: [finderId], references: [id])
+  
+  messages  Message[]
+  createdAt DateTime  @default(now())
+
+  @@unique([petId, ownerId, finderId])
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  chatRoomId String
+  chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  senderId   String
+  sender     User     @relation(fields: [senderId], references: [id])
+  text       String
+  createdAt  DateTime @default(now())
+}

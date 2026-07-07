@@ -1,4 +1,4 @@
-import { AuthRepository, PasswordHasher, TokenService } from './interface/auth.interface.js';
+import { AuthRepository, EMAIL_ALREADY_EXISTS_ERROR, PasswordHasher, TokenService } from './interface/auth.interface.js';
 import { AuthResponseDTO } from './dto/auth-reponse-dto.js';
 import { LoginDTO } from './dto/login.dto.js';
 import { RegisterDTO } from './dto/register.dto.js';
@@ -36,10 +36,21 @@ export const createAuthService = (
 
     const hashedPassword = await hasher.hash(dto.password);
 
-    const newUser = await repository.create({
-      ...dto,
-      password: hashedPassword,
-    });
+    let newUser: IUser;
+    try {
+      newUser = await repository.create({
+        ...dto,
+        password: hashedPassword,
+      });
+    } catch (error) {
+      // Osłona przed race condition: dwie równoległe rejestracje na ten sam e-mail obie mogą
+      // minąć powyższy findByEmail, zanim jedna z nich zapisze wiersz — repozytorium tłumaczy to
+      // na EMAIL_ALREADY_EXISTS_ERROR, tu zamieniamy na ten sam typowany błąd HTTP co wyżej.
+      if (error instanceof Error && error.message === EMAIL_ALREADY_EXISTS_ERROR) {
+        throw createHttpError(400, 'Ten adres e-mail jest już zajęty');
+      }
+      throw error;
+    }
 
     // Gwarancja bezpieczeństwa: usuwamy hasło z obiektu przed przekazaniem do kontrolera
     const { password, ...userWithoutPassword } = newUser;

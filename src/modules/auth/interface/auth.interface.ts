@@ -21,3 +21,7 @@ export type TokenPayload = {
 export type TokenService = {
   sign: (payload: TokenPayload) => string;
 };
+
+// Rzucane przez AuthRepository.create zamiast surowego PrismaClientKnownRequestError (P2002) —
+// warstwa repozytorium nie powinna przeciekać szczegółów Prisma wyżej.
+export const EMAIL_ALREADY_EXISTS_ERROR = 'EMAIL_ALREADY_EXISTS';

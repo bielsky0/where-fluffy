@@ -1,0 +1,123 @@
+import { createPetsService } from './pets.service.js';
+import { IPet, PetRepository } from './interfaces/pets.interface.js';
+import { CreatePetDTO } from './dto/create-pet.dto.js';
+
+const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
+  id: 'pet-1',
+  name: 'Rex',
+  species: 'dog',
+  location: { lat: 52.2297, lng: 21.0122 },
+  ownerId: 'owner-1',
+  status: 'missing',
+  reward: 100,
+  createdAt: new Date('2026-01-01T10:00:00.000Z'),
+  updatedAt: new Date('2026-01-02T10:00:00.000Z'),
+  ...overrides,
+});
+
+const buildCreateDto = (overrides: Partial<CreatePetDTO> = {}): CreatePetDTO => ({
+  name: 'Rex',
+  species: 'dog',
+  location: { lat: 52.2297, lng: 21.0122 },
+  reward: 100,
+  ownerId: 'owner-1',
+  ...overrides,
+});
+
+describe('createPetsService', () => {
+  let mockRepository: jest.Mocked<PetRepository>;
+
+  beforeEach(() => {
+    mockRepository = {
+      findById: jest.fn(),
+      save: jest.fn(),
+      findNearLocation: jest.fn(),
+    };
+  });
+
+  describe('reportMissingPet', () => {
+    it('passes the exact DTO through to repository.save', async () => {
+      const dto = buildCreateDto();
+      mockRepository.save.mockResolvedValue(buildPet());
+      const service = createPetsService(mockRepository);
+
+      await service.reportMissingPet(dto);
+
+      expect(mockRepository.save).toHaveBeenCalledTimes(1);
+      expect(mockRepository.save).toHaveBeenCalledWith(dto);
+    });
+
+    it('maps the saved domain pet into a PetResponseDTO', async () => {
+      const savedPet = buildPet({ id: 'pet-99', reward: 250 });
+      mockRepository.save.mockResolvedValue(savedPet);
+      const service = createPetsService(mockRepository);
+
+      const result = await service.reportMissingPet(buildCreateDto());
+
+      expect(result).toEqual({
+        id: 'pet-99',
+        name: savedPet.name,
+        species: savedPet.species,
+        status: savedPet.status,
+        reward: 250,
+        location: savedPet.location,
+        createdAt: savedPet.createdAt.toISOString(),
+      });
+    });
+
+    it('propagates a rejection from repository.save without swallowing it', async () => {
+      mockRepository.save.mockRejectedValue(new Error('DB failure'));
+      const service = createPetsService(mockRepository);
+
+      await expect(service.reportMissingPet(buildCreateDto())).rejects.toThrow('DB failure');
+    });
+  });
+
+  describe('getPetsNearby', () => {
+    it('passes lat/lng/radius through to repository.findNearLocation and maps the results', async () => {
+      const nearbyPet = buildPet({ id: 'pet-2' });
+      mockRepository.findNearLocation.mockResolvedValue([nearbyPet]);
+      const service = createPetsService(mockRepository);
+
+      const result = await service.getPetsNearby(52.2297, 21.0122, 1000);
+
+      expect(mockRepository.findNearLocation).toHaveBeenCalledWith(52.2297, 21.0122, 1000);
+      expect(result).toEqual([
+        {
+          id: 'pet-2',
+          name: nearbyPet.name,
+          species: nearbyPet.species,
+          status: nearbyPet.status,
+          reward: nearbyPet.reward,
+          location: nearbyPet.location,
+          createdAt: nearbyPet.createdAt.toISOString(),
+        },
+      ]);
+    });
+
+    it('defaults radius to 5000 when not provided', async () => {
+      mockRepository.findNearLocation.mockResolvedValue([]);
+      const service = createPetsService(mockRepository);
+
+      await service.getPetsNearby(52.2297, 21.0122);
+
+      expect(mockRepository.findNearLocation).toHaveBeenCalledWith(52.2297, 21.0122, 5000);
+    });
+
+    it('returns an empty array, not null/undefined, when the repository finds nothing', async () => {
+      mockRepository.findNearLocation.mockResolvedValue([]);
+      const service = createPetsService(mockRepository);
+
+      const result = await service.getPetsNearby(52.2297, 21.0122);
+
+      expect(result).toEqual([]);
+    });
+
+    it('propagates a rejection from repository.findNearLocation without swallowing it', async () => {
+      mockRepository.findNearLocation.mockRejectedValue(new Error('DB failure'));
+      const service = createPetsService(mockRepository);
+
+      await expect(service.getPetsNearby(52.2297, 21.0122)).rejects.toThrow('DB failure');
+    });
+  });
+});

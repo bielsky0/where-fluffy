@@ -6,12 +6,16 @@ import { createAuthController } from './auth.controller.js';
 import { AuthRepository, PasswordHasher, TokenService } from './interface/auth.interface.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 import { errorHandler } from '../../shared/middleware/error.middleware.js';
+import { validate } from '../../shared/middleware/validate.js';
+import { loginSchema, registerSchema } from './auth.schema.js';
 import { buildMockHasher, buildMockRepository, buildMockTokenService, buildUser } from './auth.test-helpers.js';
 
 // Minimalna, samodzielna apka Express — tylko trasy auth, żeby test nie zależał od
 // pets/chat/Redis. Serwis jest prawdziwy (createAuthService), ale zbudowany na mockowanych
 // repository/hasher/tokenService, dokładnie tak jak poprosił użytkownik: "inject mocked
-// dependencies into the service, and the service into the controller".
+// dependencies into the service, and the service into the controller". Walidacja (`validate`)
+// jest wpięta na poziomie trasy — tak jak w prawdziwym auth.routes.ts — bo kontroler już nie
+// robi jej sam (patrz shared/middleware/validate.ts).
 const buildTestApp = (repository: AuthRepository, hasher: PasswordHasher, tokenService: TokenService): Express => {
   const authService = createAuthService(repository, hasher, tokenService);
   const controller = createAuthController(authService);
@@ -20,8 +24,8 @@ const buildTestApp = (repository: AuthRepository, hasher: PasswordHasher, tokenS
   app.use(express.json());
   app.use(cookieParser());
 
-  app.post('/auth/register', asyncHandler(controller.registerUser));
-  app.post('/auth/login', asyncHandler(controller.loginUser));
+  app.post('/auth/register', validate(registerSchema), asyncHandler(controller.registerUser));
+  app.post('/auth/login', validate(loginSchema), asyncHandler(controller.loginUser));
   app.post('/auth/logout', asyncHandler(controller.logoutUser));
 
   app.use(errorHandler);

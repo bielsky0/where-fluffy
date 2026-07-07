@@ -1,7 +1,6 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js';
 import { CreatePetDTO } from './dto/create-pet.dto.js';
-import { createPetSchema } from './pets.schema.js';
 import { PetsService } from './pets.service.js';
 
 export type PetsController = {
@@ -10,23 +9,19 @@ export type PetsController = {
 };
 
 export const createPetsController = (petsService: PetsService): PetsController => {
+  // req.body jest już zwalidowany przez middleware validate(createPetSchema) w pets.routes.ts.
   const create = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    // 1. Walidacja danych wejściowych z body
-    const validatedBody = createPetSchema.parse(req.body);
+    const validatedBody = req.body as Omit<CreatePetDTO, 'ownerId'>;
 
     // Mock użytkownika (w przyszłości pobierane z middleware autoryzacji: req.user.id)
     const fallbackOwnerId = '00000000-0000-0000-0000-000000000000';
 
-    // 2. Przygotowanie DTO dla serwisu
     const createPetDto: CreatePetDTO = {
       ...validatedBody,
       ownerId: req.user?.id || fallbackOwnerId,
     };
 
-    // 3. Wywołanie logiki biznesowej
     const result = await petsService.reportMissingPet(createPetDto);
-
-    // 4. Odpowiedź HTTP
     res.status(201).json(result);
   };
 

@@ -59,7 +59,7 @@ describe('createAuthService', () => {
       const service = createAuthService(mockRepository, mockHasher, mockTokenService);
 
       await expect(service.register(buildRegisterDto())).rejects.toMatchObject({
-        status: 400,
+        statusCode: 400,
         message: 'Ten adres e-mail jest już zajęty',
       });
       expect(mockHasher.hash).not.toHaveBeenCalled();
@@ -71,7 +71,7 @@ describe('createAuthService', () => {
       const service = createAuthService(mockRepository, mockHasher, mockTokenService);
 
       await expect(service.register(buildRegisterDto({ password: '' }))).rejects.toMatchObject({
-        status: 400,
+        statusCode: 400,
         message: 'Hasło jest wymagane',
       });
       expect(mockRepository.create).not.toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe('createAuthService', () => {
       const service = createAuthService(mockRepository, mockHasher, mockTokenService);
 
       await expect(service.register(buildRegisterDto())).rejects.toMatchObject({
-        status: 400,
+        statusCode: 400,
         message: 'Ten adres e-mail jest już zajęty',
       });
     });
@@ -126,7 +126,7 @@ describe('createAuthService', () => {
       const service = createAuthService(mockRepository, mockHasher, mockTokenService);
 
       await expect(service.login(buildLoginDto())).rejects.toMatchObject({
-        status: 401,
+        statusCode: 401,
         message: 'Niepoprawny e-mail lub hasło',
       });
       expect(mockHasher.compare).not.toHaveBeenCalled();
@@ -137,7 +137,7 @@ describe('createAuthService', () => {
       mockRepository.findByEmail.mockResolvedValue(buildUser({ password: undefined }));
       const service = createAuthService(mockRepository, mockHasher, mockTokenService);
 
-      await expect(service.login(buildLoginDto())).rejects.toMatchObject({ status: 401 });
+      await expect(service.login(buildLoginDto())).rejects.toMatchObject({ statusCode: 401 });
       expect(mockHasher.compare).not.toHaveBeenCalled();
     });
 
@@ -147,7 +147,7 @@ describe('createAuthService', () => {
       const service = createAuthService(mockRepository, mockHasher, mockTokenService);
 
       await expect(service.login(buildLoginDto())).rejects.toMatchObject({
-        status: 401,
+        statusCode: 401,
         message: 'Niepoprawny e-mail lub hasło',
       });
       expect(mockTokenService.sign).not.toHaveBeenCalled();

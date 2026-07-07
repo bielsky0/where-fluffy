@@ -3,20 +3,11 @@ import { AuthResponseDTO } from './dto/auth-reponse-dto.js';
 import { LoginDTO } from './dto/login.dto.js';
 import { RegisterDTO } from './dto/register.dto.js';
 import { IUser } from './interface/user.interface.js';
+import { createAppError } from '../../shared/errors/app-error.js';
 
 export type AuthService = {
   register: (dto: RegisterDTO) => Promise<Omit<IUser, 'password'>>;
   login: (dto: LoginDTO) => Promise<AuthResponseDTO>;
-};
-
-// Ten sam kształt błędu co w reszcie repo (Error + .status, patrz CLAUDE.md/shared/middleware/error.middleware.ts),
-// tylko bez "as any" — HttpError daje dokładnie to samo w runtime, przy pełnej typizacji.
-type HttpError = Error & { status: number };
-
-const createHttpError = (status: number, message: string): HttpError => {
-  const error = new Error(message) as HttpError;
-  error.status = status;
-  return error;
 };
 
 export const createAuthService = (
@@ -27,11 +18,11 @@ export const createAuthService = (
   const register = async (dto: RegisterDTO): Promise<Omit<IUser, 'password'>> => {
     const existingUser = await repository.findByEmail(dto.email);
     if (existingUser) {
-      throw createHttpError(400, 'Ten adres e-mail jest już zajęty');
+      throw createAppError(400, 'Ten adres e-mail jest już zajęty');
     }
 
     if (!dto.password) {
-      throw createHttpError(400, 'Hasło jest wymagane');
+      throw createAppError(400, 'Hasło jest wymagane');
     }
 
     const hashedPassword = await hasher.hash(dto.password);
@@ -47,7 +38,7 @@ export const createAuthService = (
       // minąć powyższy findByEmail, zanim jedna z nich zapisze wiersz — repozytorium tłumaczy to
       // na EMAIL_ALREADY_EXISTS_ERROR, tu zamieniamy na ten sam typowany błąd HTTP co wyżej.
       if (error instanceof Error && error.message === EMAIL_ALREADY_EXISTS_ERROR) {
-        throw createHttpError(400, 'Ten adres e-mail jest już zajęty');
+        throw createAppError(400, 'Ten adres e-mail jest już zajęty');
       }
       throw error;
     }
@@ -60,12 +51,12 @@ export const createAuthService = (
   const login = async (dto: LoginDTO): Promise<AuthResponseDTO> => {
     const user = await repository.findByEmail(dto.email);
     if (!user || !user.password) {
-      throw createHttpError(401, 'Niepoprawny e-mail lub hasło');
+      throw createAppError(401, 'Niepoprawny e-mail lub hasło');
     }
 
     const isPasswordValid = await hasher.compare(dto.password, user.password);
     if (!isPasswordValid) {
-      throw createHttpError(401, 'Niepoprawny e-mail lub hasło');
+      throw createAppError(401, 'Niepoprawny e-mail lub hasło');
     }
 
     const token = tokenService.sign({ id: user.id, email: user.email, name: user.name });

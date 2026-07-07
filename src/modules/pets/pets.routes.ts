@@ -1,15 +1,16 @@
 import { Router } from 'express';
 import { authenticate } from '../../shared/middleware/auth.middleware.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
+import { validate } from '../../shared/middleware/validate.js';
 import { commentsController } from '../comments/index.js';
 import { petsController } from './index.js';
-
+import { createPetSchema } from './pets.schema.js';
 
 const router = Router();
 
 // --- Trasy Zwierzaków ---
 router.get('/nearby', asyncHandler(petsController.listNearby));
-router.post('/', authenticate, asyncHandler(petsController.create));
+router.post('/', authenticate, validate(createPetSchema), asyncHandler(petsController.create));
 
 // --- Trasy Komentarzy / Sighting Points (Zagnieżdżone RESTowo) ---
 

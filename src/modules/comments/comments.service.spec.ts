@@ -85,7 +85,7 @@ describe('createCommentsService', () => {
       const service = createCommentsService(mockRepository, mockPetRepository);
 
       await expect(service.addCommentToPet(buildCreateCommentDto())).rejects.toMatchObject({
-        status: 404,
+        statusCode: 404,
         message: 'Zgłoszenie zwierzaka nie istnieje',
       });
       expect(mockRepository.create).not.toHaveBeenCalled();

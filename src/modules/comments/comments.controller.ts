@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js';
-import { createCommentSchema } from './comments.schema.js';
+import { CreateCommentDTO } from './dto/create-comment.dto.js';
 import { CommentsService } from './comments.service.js';
 
 export type CommentsController = {
@@ -9,14 +9,14 @@ export type CommentsController = {
 };
 
 export const createCommentsController = (commentsService: CommentsService): CommentsController => {
+  // req.body jest już zwalidowany przez middleware validate(createCommentSchema) na trasie.
   const create = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const rawPetId = req.params.petId;
 
     // Jeśli z jakiegoś powodu to tablica, weź pierwszy element. W przeciwnym wypadku weź string.
     const petId = Array.isArray(rawPetId) ? rawPetId[0] : rawPetId;
 
-    // W tym miejscu TypeScript jest w 100% pewny, że 'petId' to czysty 'string'
-    const validatedBody = createCommentSchema.parse(req.body);
+    const validatedBody = req.body as Omit<CreateCommentDTO, 'petId' | 'userId'>;
 
     const dto = {
       ...validatedBody,

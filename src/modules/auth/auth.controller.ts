@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
-import { registerSchema, loginSchema } from './auth.schema.js';
+import { LoginDTO } from './dto/login.dto.js';
+import { RegisterDTO } from './dto/register.dto.js';
 
 export type AuthController = {
   registerUser: (req: Request, res: Response) => Promise<void>;
@@ -9,17 +10,16 @@ export type AuthController = {
 };
 
 export const createAuthController = (authService: AuthService): AuthController => {
+  // req.body jest już zwalidowany i sparsowany przez middleware validate(registerSchema)
+  // wpięty w auth.routes.ts, zanim żądanie tu dotrze.
   const registerUser = async (req: Request, res: Response): Promise<void> => {
-    const validatedData = registerSchema.parse(req.body);
-    const result = await authService.register(validatedData);
+    const result = await authService.register(req.body as RegisterDTO);
     res.status(201).json(result);
   };
 
+  // req.body jest już zwalidowany przez middleware validate(loginSchema) w auth.routes.ts.
   const loginUser = async (req: Request, res: Response): Promise<void> => {
-    const validatedData = loginSchema.parse(req.body);
-
-    // Destrukturyzujemy wynik z serwisu
-    const { user, token } = await authService.login(validatedData);
+    const { user, token } = await authService.login(req.body as LoginDTO);
 
     // Ustawiamy ciasteczko z tokenem
     res.cookie('token', token, {

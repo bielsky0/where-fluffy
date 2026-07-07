@@ -7,6 +7,8 @@ import { PetRepository } from '../pets/interfaces/pets.interface.js';
 import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 import { errorHandler } from '../../shared/middleware/error.middleware.js';
+import { validate } from '../../shared/middleware/validate.js';
+import { createCommentSchema } from './comments.schema.js';
 import { buildComment, buildMockCommentsRepository, buildMockPetRepository, buildPet } from './comments.test-helpers.js';
 
 // Minimalna, samodzielna apka Express — tylko trasy comments, żeby test nie zależał od
@@ -32,7 +34,12 @@ const buildTestApp = (
   const app = express();
   app.use(express.json());
 
-  app.post('/pets/:petId/comments', fakeAuthenticate(userId), asyncHandler(controller.create));
+  app.post(
+    '/pets/:petId/comments',
+    fakeAuthenticate(userId),
+    validate(createCommentSchema),
+    asyncHandler(controller.create),
+  );
   app.get('/pets/:petId/comments', asyncHandler(controller.listForPet));
 
   app.use(errorHandler);

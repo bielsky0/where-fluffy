@@ -3,16 +3,7 @@ import { CommentResponseDTO } from './dto/comment-response.dto.js';
 import { CreateCommentDTO } from './dto/create-comment.dto.js';
 import { CommentsRepository } from './interfaces/comment.interface.js';
 import { mapToResponseDTO } from './comments.mapper.js';
-
-// Ten sam kształt błędu co w reszcie repo (Error + .status, patrz CLAUDE.md/shared/middleware/error.middleware.ts),
-// tylko bez "as any".
-type HttpError = Error & { status: number };
-
-const createHttpError = (status: number, message: string): HttpError => {
-  const error = new Error(message) as HttpError;
-  error.status = status;
-  return error;
-};
+import { createAppError } from '../../shared/errors/app-error.js';
 
 export type CommentsService = {
   addCommentToPet: (dto: CreateCommentDTO) => Promise<CommentResponseDTO>;
@@ -28,7 +19,7 @@ export const createCommentsService = (
     const pet = await petRepository.findById(dto.petId);
 
     if (!pet) {
-      throw createHttpError(404, 'Zgłoszenie zwierzaka nie istnieje');
+      throw createAppError(404, 'Zgłoszenie zwierzaka nie istnieje');
     }
 
     // 2. Zapisanie komentarza przez dedykowane repozytorium komentarzy

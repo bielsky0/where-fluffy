@@ -4,16 +4,20 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import jwt from 'jsonwebtoken';
 import { parseCookie } from 'cookie';
 import type { RedisClientType } from 'redis';
+// Chat jest jedynym modułem WebSocket w tej chwili (patrz app.gateways.ts), więc kształt
+// zdarzeń WS żyje w jego interfejsie. Jeśli dojdzie drugi moduł WS, te typy powinny się
+// przenieść w bardziej neutralne miejsce i połączyć jako unia zdarzeń z obu modułów.
+import type { ChatIoServer } from '../../modules/chat/interface/chat.interface.js';
 
-let io: Server;
+let io: ChatIoServer;
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 
 // Przyjmujemy pub/sub jako argumenty!
 export const initSocket = (
-  httpServer: HttpServer, 
-  pubClient: RedisClientType, 
+  httpServer: HttpServer,
+  pubClient: RedisClientType,
   subClient: RedisClientType
-): Server => {
+): ChatIoServer => {
 
   io = new Server(httpServer, {
     cors: { origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true },
@@ -44,7 +48,7 @@ export const initSocket = (
   return io;
 };
 
-export const getIO = (): Server => {
+export const getIO = (): ChatIoServer => {
   if (!io) throw new Error('Socket.io not initialized!');
   return io;
 };

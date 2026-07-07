@@ -1,29 +1,27 @@
-import { Server, Socket } from 'socket.io';
 import { JoinChatSchema, SendMessageSchema } from './chat.schema.js';
-import * as chatService from './chat.service.js';
-import { grantUserAccess, checkUserAccess, setUserOffline, setUserOnline } from './chat.repository.js';
+import { ChatService } from './chat.service.js';
+import { ChatIoServer, ChatIoSocket } from './interface/chat.interface.js';
 
-export const registerChatHandlers = (io: Server) => {
-  io.on('connection', async (socket: Socket) => {
-    const userId = socket.data.userId as string;
+export const createChatGateway = (io: ChatIoServer, chatService: ChatService): void => {
+  io.on('connection', async (socket: ChatIoSocket) => {
+    const userId = socket.data.userId;
     if (!userId) return socket.disconnect();
 
-    await setUserOnline(userId, socket.id);
+    await chatService.markUserOnline(userId, socket.id);
     console.log(`[WS] Połączono: ${userId}`);
 
     // --- EVENT: Dołączenie ---
     socket.on('join_chat', async (data) => {
+      // "data" jest typowane jako JoinChatPayload dzięki ClientToServerEvents, ale to tylko
+      // deklaracja intencji — klient nie jest niczym związany, więc walidacja w runtime zostaje.
       const parsed = JoinChatSchema.safeParse(data);
       if (!parsed.success) return socket.emit('error_response', { message: 'Błędne dane.' });
 
       try {
         const { petId, finderId } = parsed.data;
-        // Serwis weryfikuje bazę SQL tylko raz przy dołączeniu
+        // Serwis weryfikuje bazę SQL tylko raz przy dołączeniu i sam zapisuje dostęp w Redis
         const result = await chatService.joinChatRoom(userId, petId, finderId);
-        
-        // Zapisujemy dostęp w Redis (czas trwania: np. 1 godzina)
-        await grantUserAccess(userId, result.roomId);
-        
+
         socket.join(result.roomId);
         socket.emit('chat_joined', result);
       } catch (error) {
@@ -39,20 +37,19 @@ export const registerChatHandlers = (io: Server) => {
       try {
         const { chatRoomId, text } = parsed.data;
 
-        // ✅ KLUCZOWY MOMENT: Sprawdzamy dostęp w REDIS, nie w SQL!
-        const hasAccess = await checkUserAccess(userId, chatRoomId);
-        if (!hasAccess) {
-          return socket.emit('error_response', { message: 'Brak dostępu do pokoju.' });
-        }
-
-        // Jeśli dostęp jest w Redis, zapisujemy wiadomość w bazie
-        const messageDTO = await chatService.saveMessage(userId, chatRoomId, text);
+        // Sprawdzenie dostępu (Redis) i zapis wiadomości (SQL) dzieją się teraz w serwisie —
+        // gateway tylko przekazuje dane i emituje wynik przez Socket.io.
+        const messageDTO = await chatService.sendMessage(userId, chatRoomId, text);
         io.to(chatRoomId).emit('new_message', messageDTO);
       } catch (error) {
-        socket.emit('error_response', { message: 'Błąd zapisu wiadomości.' });
+        const message =
+          error instanceof Error && error.message === 'FORBIDDEN'
+            ? 'Brak dostępu do pokoju.'
+            : 'Błąd zapisu wiadomości.';
+        socket.emit('error_response', { message });
       }
     });
 
-    socket.on('disconnect', () => setUserOffline(userId));
+    socket.on('disconnect', () => chatService.markUserOffline(userId));
   });
 };

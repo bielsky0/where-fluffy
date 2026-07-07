@@ -1,4 +1,4 @@
-import { findById } from "../pets/pets.repository.js";
+import { petsRepository } from "../pets/index.js";
 import { create, findByPetId } from "./comments.repository.js";
 import { CommentResponseDTO } from "./dto/comment-response.dto.js";
 import { CreateCommentDTO } from "./dto/create-comment.dto.js";
@@ -22,7 +22,7 @@ const mapToResponseDTO = (comment: any): CommentResponseDTO => ({
 
 export const addCommentToPet = async (dto: CreateCommentDTO): Promise<CommentResponseDTO> => {
   // 1. Sprawdzenie biznesowe przez warstwę abstrakcji (Repozytorium Pets)
-  const pet = await findById(dto.petId);
+  const pet = await petsRepository.findById(dto.petId);
   
   if (!pet) {
     const error = new Error('Zgłoszenie zwierzaka nie istnieje') as any;

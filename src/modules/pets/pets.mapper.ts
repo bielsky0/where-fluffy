@@ -1,0 +1,43 @@
+import { PetResponseDTO } from './dto/pet-response.dto.js';
+import { IPet } from './interfaces/pets.interface.js';
+
+// Typ pomocniczy dla bazy danych (odzwierciedla to, co zwraca PostGIS po ST_X/ST_Y)
+export type RawPetRow = {
+  id: string;
+  name: string;
+  species: string;
+  status: string;
+  reward: number;
+  ownerId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  lat: number;
+  lng: number;
+};
+
+// Mapper: konwertuje wiersz z bazy na domenowy model IPet
+export const mapToDomain = (row: RawPetRow): IPet => ({
+  id: row.id,
+  name: row.name,
+  species: row.species,
+  status: row.status as 'missing' | 'found',
+  reward: Number(row.reward),
+  ownerId: row.ownerId,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+  location: { lat: row.lat, lng: row.lng },
+});
+
+// Mapper: transformuje model domenowy na DTO wyjściowe
+export const mapToResponseDTO = (pet: IPet): PetResponseDTO => ({
+  id: pet.id,
+  name: pet.name,
+  species: pet.species,
+  status: pet.status,
+  reward: Number(pet.reward),
+  location: {
+    lat: Number(pet.location.lat),
+    lng: Number(pet.location.lng),
+  },
+  createdAt: pet.createdAt.toISOString(),
+});

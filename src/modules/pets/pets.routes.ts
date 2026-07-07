@@ -2,14 +2,14 @@ import { Router } from 'express';
 import { authenticate } from '../../shared/middleware/auth.middleware.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 import { listForPet } from '../comments/comments.controller.js';
-import { create, listNearby } from './pets.controller.js';
+import { petsController } from './index.js';
 
 
 const router = Router();
 
 // --- Trasy Zwierzaków ---
-router.get('/nearby', asyncHandler(listNearby));
-router.post('/', authenticate, asyncHandler(create));
+router.get('/nearby', asyncHandler(petsController.listNearby));
+router.post('/', authenticate, asyncHandler(petsController.create));
 
 // --- Trasy Komentarzy / Sighting Points (Zagnieżdżone RESTowo) ---
 
@@ -17,6 +17,6 @@ router.post('/', authenticate, asyncHandler(create));
 router.get('/:petId/comments', asyncHandler(listForPet));
 
 // PRYWATNE: Tylko zalogowany może dodać nowy punkt widzenia / komentarz
-router.post('/:petId/comments', authenticate, asyncHandler(create));
+router.post('/:petId/comments', authenticate, asyncHandler(petsController.create));
 
 export default router;

@@ -6,7 +6,7 @@ import { parseCookie } from 'cookie';
 import type { RedisClientType } from 'redis';
 
 let io: Server;
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 
 // Przyjmujemy pub/sub jako argumenty!
 export const initSocket = (
@@ -27,8 +27,13 @@ export const initSocket = (
       
       const token = parseCookie(cookiesHeader).token;
       if (!token) throw new Error('Token missing');
-
-      const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+      const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email?: string; name?: string };
+      // Zachowujemy pełne dane użytkownika oraz skrócone userId dla kompatybilności
+      socket.data.user = {
+        id: decoded.id,
+        email: decoded.email,
+        name: decoded.name,
+      };
       socket.data.userId = decoded.id;
       next();
     } catch (err) {

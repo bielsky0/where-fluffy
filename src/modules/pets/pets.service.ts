@@ -1,32 +1,24 @@
-import { CreatePetDTO } from "./dto/create-pet.dto.js";
-import { PetResponseDTO } from "./dto/pet-response.dto.js";
-import { IPet } from "./interfaces/pets.interface.js";
-import { save, findNearLocation } from "./pets.repository.js";
+import { CreatePetDTO } from './dto/create-pet.dto.js';
+import { PetResponseDTO } from './dto/pet-response.dto.js';
+import { PetRepository } from './interfaces/pets.interface.js';
+import { mapToResponseDTO } from './pets.mapper.js';
 
-
-
-// Funkcja pomocnicza (Mapper) do transformacji modelu domenowego na DTO wyjściowe
-const mapToResponseDTO = (pet: IPet): PetResponseDTO => ({
-  id: pet.id,
-  name: pet.name,
-  species: pet.species,
-  status: pet.status,
-  reward: Number(pet.reward),
-  location: {
-    lat: Number(pet.location.lat),
-    lng: Number(pet.location.lng),
-  },
-  createdAt: pet.createdAt.toISOString(),
-});
-
-export const reportMissingPet = async (dto: CreatePetDTO): Promise<PetResponseDTO> => {
-  // Tutaj opcjonalnie: logika biznesowa (np. limit zgłoszeń dla darmowego konta)
-  
-  const savedPet = await save(dto);
-  return mapToResponseDTO(savedPet);
+export type PetsService = {
+  reportMissingPet: (dto: CreatePetDTO) => Promise<PetResponseDTO>;
+  getPetsNearby: (lat: number, lng: number, radius?: number) => Promise<PetResponseDTO[]>;
 };
 
-export const getPetsNearby = async (lat: number, lng: number, radius = 5000): Promise<PetResponseDTO[]> => {
-  const pets = await findNearLocation(lat, lng, radius);
-  return pets.map(mapToResponseDTO);
+export const createPetsService = (petRepository: PetRepository): PetsService => {
+  const reportMissingPet = async (dto: CreatePetDTO): Promise<PetResponseDTO> => {
+    // Tutaj opcjonalnie: logika biznesowa (np. limit zgłoszeń dla darmowego konta)
+    const savedPet = await petRepository.save(dto);
+    return mapToResponseDTO(savedPet);
+  };
+
+  const getPetsNearby = async (lat: number, lng: number, radius = 5000): Promise<PetResponseDTO[]> => {
+    const pets = await petRepository.findNearLocation(lat, lng, radius);
+    return pets.map(mapToResponseDTO);
+  };
+
+  return { reportMissingPet, getPetsNearby };
 };

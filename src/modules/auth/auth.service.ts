@@ -49,7 +49,7 @@ export const login = async (dto: LoginDTO): Promise<AuthResponseDTO> => {
     throw error;
   }
 
-  const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1d' });
+  const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '1d' });
 
   return {
     user: {

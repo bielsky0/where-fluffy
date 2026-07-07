@@ -1,10 +1,12 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  extensions = [postgis]
 }
 
 model User {
@@ -24,30 +26,34 @@ model User {
 }
 
 model Pet {
-  id        String    @id @default(uuid())
+  id        String   @id @default(uuid())
   name      String
   species   String
-  status    String    @default("LOST")
-  latitude  Float
-  longitude Float
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  status    String   @default("LOST")
+  reward    Int      @default(0) // Przywrócone pole reward
   
-  // Relacja z właścicielem
+  // Pole PostGIS
+  location  Unsupported("geography(Point, 4326)")? 
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
   ownerId   String
-  owner     User      @relation(fields: [ownerId], references: [id])
-  
-  // Relacje do komentarzy i czatów
+  owner     User     @relation(fields: [ownerId], references: [id])
   comments  Comment[]
   chats     ChatRoom[]
+
+  @@index([location], type: Gist)
 }
 
 model Comment {
   id        String   @id @default(uuid())
   message   String
-  type      String   // "sighted" | "area_checked_empty" | "general"
-  latitude  Float?
-  longitude Float?
+  type      String
+  
+  // Tutaj również warto zamienić na typ PostGIS
+  location  Unsupported("geography(Point, 4326)")?
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   

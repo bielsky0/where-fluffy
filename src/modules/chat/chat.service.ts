@@ -1,4 +1,4 @@
-import { getUserRooms, getRoomMessages } from "./chat.repository.js";
+import { getUserRooms, getRoomMessages, createChatRoom, createMessage, findChatRoomByKey, findPetById } from "./chat.repository.js";
 import { ChatListResponseDTO } from "./dto/chat-list-response.dto.js";
 import { MessageResponseDTO } from "./dto/message-response.dto.js";
 import { ChatRoomWithRelations, MessageWithSender } from "./interface/chat.interface.js";
@@ -7,6 +7,9 @@ import { ChatRoomWithRelations, MessageWithSender } from "./interface/chat.inter
  * Prywatny mapper przekształcający surowy pokój z bazy danych na DTO listy czatów.
  * Automatycznie wylicza, kto dla zalogowanego użytkownika jest "rozmówcą" (interlocutor).
  */
+
+
+
 const mapToChatListDTO = (room: ChatRoomWithRelations, userId: string): ChatListResponseDTO => {
   // Jeśli zalogowany użytkownik to właściciel (owner), to jego rozmówcą jest znalazca (finder) i odwrotnie
   const interlocutor = room.ownerId === userId ? room.finder : room.owner;
@@ -66,4 +69,31 @@ export const getChatHistory = async (roomId: string): Promise<MessageResponseDTO
   
   // Rzutujemy i mapujemy na tablicę DTO wiadomości
   return (messages as MessageWithSender[]).map(mapToMessageDTO);
+};
+
+
+export const joinChatRoom = async (userId: string, petId: string, finderId: string) => {
+  const pet = await findPetById(petId);
+  if (!pet) throw new Error('PET_NOT_FOUND');
+  
+  if (userId !== pet.ownerId && userId !== finderId) {
+    throw new Error('UNAUTHORIZED');
+  }
+
+  let chatRoom = await findChatRoomByKey(petId, pet.ownerId, finderId);
+  if (!chatRoom) {
+    chatRoom = await createChatRoom(petId, pet.ownerId, finderId);
+  }
+
+  const history = await getRoomMessages(chatRoom.id);
+  
+  return { 
+    roomId: chatRoom.id, 
+    history: history.map(mapToMessageDTO) 
+  };
+};
+
+export const saveMessage = async (userId: string, roomId: string, text: string) => {
+  const newMessage = await createMessage(roomId, userId, text);
+  return mapToMessageDTO(newMessage);
 };

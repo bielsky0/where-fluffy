@@ -1,4 +1,25 @@
 import { prisma } from "../../shared/prisma.js";
+import { redisClient } from '../../shared/infrastructure/redis.js';
+
+export const setUserOnline = async (userId: string, socketId: string) => {
+  // Przechowujemy socketId, aby wiedzieć gdzie wysyłać wiadomości
+  await redisClient.set(`user:${userId}:status`, 'online');
+  await redisClient.set(`user:${userId}:socket`, socketId);
+};
+
+export const setUserOffline = async (userId: string) => {
+  await redisClient.del(`user:${userId}:status`);
+  await redisClient.del(`user:${userId}:socket`);
+};
+
+export const grantUserAccess = async (userId: string, roomId: string) => {
+  await redisClient.setEx(`access:${userId}:${roomId}`, 3600, '1');
+};
+
+export const checkUserAccess = async (userId: string, roomId: string): Promise<boolean> => {
+  const access = await redisClient.get(`access:${userId}:${roomId}`);
+  return access === '1';
+};
 
 // Istniejące metody dla HTTP API
 export const getUserRooms = async (userId: string) => {

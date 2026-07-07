@@ -1,104 +1,58 @@
 import { Server, Socket } from 'socket.io';
-import { findPetById, findChatRoomByKey, createChatRoom, findChatRoomById, createMessage } from './chat.repository.js';
-import { getChatHistory, mapToMessageDTO } from './chat.service.js';
-import { MessageWithSender } from './interface/chat.interface.js';
-
-
-interface JoinChatPayload {
-  petId: string;
-  finderId: string;
-}
-
-interface SendMessagePayload {
-  chatRoomId: string;
-  text: string;
-}
+import { JoinChatSchema, SendMessageSchema } from './chat.schema.js';
+import * as chatService from './chat.service.js';
+import { grantUserAccess, checkUserAccess, setUserOffline, setUserOnline } from './chat.repository.js';
 
 export const registerChatHandlers = (io: Server) => {
-  io.on('connection', (socket: Socket) => {
+  io.on('connection', async (socket: Socket) => {
     const userId = socket.data.userId as string;
-    console.log(`[WS] Połączono klienta: ${userId}`);
+    if (!userId) return socket.disconnect();
 
-    // --- EVENT: Dołączenie do pokoju czatu ---
-    socket.on('join_chat', async (payload: JoinChatPayload) => {
-      const { petId, finderId } = payload;
+    await setUserOnline(userId, socket.id);
+    console.log(`[WS] Połączono: ${userId}`);
 
-      if (!petId || !finderId) {
-        return socket.emit('error_response', { message: 'Brakujące parametry petId lub finderId.' });
-      }
+    // --- EVENT: Dołączenie ---
+    socket.on('join_chat', async (data) => {
+      const parsed = JoinChatSchema.safeParse(data);
+      if (!parsed.success) return socket.emit('error_response', { message: 'Błędne dane.' });
 
       try {
-        // Używamy REPOZYTORIUM zamiast bezpośredniej Prismy
-        const pet = await findPetById(petId);
-        if (!pet) {
-          return socket.emit('error_response', { message: 'Ogłoszenie zwierzaka nie istnieje.' });
-        }
-
-        const ownerId = pet.ownerId;
-
-        if (userId !== ownerId && userId !== finderId) {
-          return socket.emit('error_response', { message: 'Brak uprawnień do tego pokoju czatu.' });
-        }
-
-        // Szukamy pokoju przez REPOZYTORIUM
-        let chatRoom = await findChatRoomByKey(petId, ownerId, finderId);
-
-        if (!chatRoom) {
-          chatRoom = await createChatRoom(petId, ownerId, finderId);
-        }
-
-        socket.join(chatRoom.id);
+        const { petId, finderId } = parsed.data;
+        // Serwis weryfikuje bazę SQL tylko raz przy dołączeniu
+        const result = await chatService.joinChatRoom(userId, petId, finderId);
         
-        // Wykorzystujemy gotowy SERWIS, który od razu mapuje historię na MessageResponseDTO[]
-        const historyDTO = await getChatHistory(chatRoom.id);
+        // Zapisujemy dostęp w Redis (czas trwania: np. 1 godzina)
+        await grantUserAccess(userId, result.roomId);
         
-        socket.emit('chat_joined', { 
-          chatRoomId: chatRoom.id, 
-          history: historyDTO 
-        });
-
+        socket.join(result.roomId);
+        socket.emit('chat_joined', result);
       } catch (error) {
-        console.error('[WS ERROR] Błąd w join_chat:', error);
-        socket.emit('error_response', { message: 'Nie udało się dołączyć do czatu.' });
+        socket.emit('error_response', { message: 'Brak uprawnień lub błąd.' });
       }
     });
 
-    // --- EVENT: Wysłanie nowej wiadomości ---
-    socket.on('send_message', async (payload: SendMessagePayload) => {
-      const { chatRoomId, text } = payload;
-
-      if (!chatRoomId || !text || text.trim() === '') {
-        return socket.emit('error_response', { message: 'Wiadomość nie może być pusta.' });
-      }
+    // --- EVENT: Wysłanie wiadomości ---
+    socket.on('send_message', async (data) => {
+      const parsed = SendMessageSchema.safeParse(data);
+      if (!parsed.success) return socket.emit('error_response', { message: 'Błędny format.' });
 
       try {
-        // Sprawdzenie pokoju przez REPOZYTORIUM
-        const room = await findChatRoomById(chatRoomId);
-        if (!room) {
-          return socket.emit('error_response', { message: 'Pokój czatu nie istnieje.' });
+        const { chatRoomId, text } = parsed.data;
+
+        // ✅ KLUCZOWY MOMENT: Sprawdzamy dostęp w REDIS, nie w SQL!
+        const hasAccess = await checkUserAccess(userId, chatRoomId);
+        if (!hasAccess) {
+          return socket.emit('error_response', { message: 'Brak dostępu do pokoju.' });
         }
 
-        if (room.ownerId !== userId && room.finderId !== userId) {
-          return socket.emit('error_response', { message: 'Brak uprawnień do pisania w tym pokoju.' });
-        }
-
-        // Zapis wiadomości przez REPOZYTORIUM
-        const newMessage = await createMessage(chatRoomId, userId, text.trim());
-
-        // Mapowanie na DTO za pomocą mappera z serwisu
-        const messageDTO = mapToMessageDTO(newMessage as MessageWithSender);
-
-        // Rozgłoszenie wiadomości
+        // Jeśli dostęp jest w Redis, zapisujemy wiadomość w bazie
+        const messageDTO = await chatService.saveMessage(userId, chatRoomId, text);
         io.to(chatRoomId).emit('new_message', messageDTO);
-
       } catch (error) {
-        console.error('[WS ERROR] Błąd w send_message:', error);
-        socket.emit('error_response', { message: 'Wiadomość nie została dostarczona.' });
+        socket.emit('error_response', { message: 'Błąd zapisu wiadomości.' });
       }
     });
 
-    socket.on('disconnect', () => {
-      console.log(`[WS] Rozłączono klienta: ${userId}`);
-    });
+    socket.on('disconnect', () => setUserOffline(userId));
   });
 };

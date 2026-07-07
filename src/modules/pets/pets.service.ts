@@ -13,8 +13,8 @@ const mapToResponseDTO = (pet: IPet): PetResponseDTO => ({
   status: pet.status,
   reward: Number(pet.reward),
   location: {
-    lat: Number(pet.latitude),
-    lng: Number(pet.longitude),
+    lat: Number(pet.location.lat),
+    lng: Number(pet.location.lng),
   },
   createdAt: pet.createdAt.toISOString(),
 });

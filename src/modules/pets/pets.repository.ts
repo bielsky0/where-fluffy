@@ -2,70 +2,92 @@ import { prisma } from "../../shared/prisma.js";
 import { CreatePetDTO } from "./dto/create-pet.dto.js";
 import { IPet } from "./interfaces/pets.interface.js";
 
+// Typ pomocniczy dla bazy danych (odzwierciedla to, co zwraca PostGIS po ST_X/ST_Y)
+type RawPetRow = {
+  id: string;
+  name: string;
+  species: string;
+  status: string;
+  reward: number;
+  ownerId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  lat: number;
+  lng: number;
+};
 
-// 1. Pobranie wszystkich (opcjonalne, zwraca model domenowy)
+// Mapper: konwertuje wiersz z bazy na domenowy model IPet
+const mapToDomain = (row: RawPetRow): IPet => ({
+  id: row.id,
+  name: row.name,
+  species: row.species,
+  status: row.status as 'missing' | 'found',
+  reward: Number(row.reward),
+  ownerId: row.ownerId,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+  location: { lat: row.lat, lng: row.lng },
+});
+
 export const findAll = async (): Promise<IPet[]> => {
-  const pets = await prisma.pet.findMany();
-  return pets as IPet[]; // Mapowanie na nasz wewnętrzny interfejs
+  const pets = await prisma.$queryRaw<RawPetRow[]>`
+    SELECT *, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
+    FROM "Pet"
+  `;
+  return pets.map(mapToDomain);
 };
 
-// 2. Pobranie po ID
 export const findById = async (id: string): Promise<IPet | null> => {
-  const pet = await prisma.pet.findUnique({ where: { id } });
-  if (!pet) return null;
-  return pet as IPet;
+  const [pet] = await prisma.$queryRaw<RawPetRow[]>`
+    SELECT *, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
+    FROM "Pet"
+    WHERE id = ${id}::uuid
+  `;
+  return pet ? mapToDomain(pet) : null;
 };
 
-// 3. Zapisanie nowego zwierzaka (Zastępuje surowy SQL z poprzedniego kroku)
 export const save = async (dto: CreatePetDTO): Promise<IPet> => {
-  const pet = await prisma.pet.create({
-    data: {
-      name: dto.name,
-      species: dto.species,
-      latitude: dto.latitude,
-      longitude: dto.longitude,
-      reward: dto.reward,
-      ownerId: dto.ownerId,
-      status: 'missing', // Domyślny status dla nowego zgłoszenia
-    },
-  });
-  return pet as IPet;
+  const [pet] = await prisma.$queryRaw<RawPetRow[]>`
+    INSERT INTO "Pet" (id, name, species, reward, "ownerId", status, location)
+    VALUES (gen_random_uuid(), ${dto.name}, ${dto.species}, ${dto.reward}, ${dto.ownerId}, 'missing',
+            ST_SetSRID(ST_MakePoint(${dto.location.lng}, ${dto.location.lat}), 4326)::geography)
+    RETURNING *, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng;
+  `;
+  return mapToDomain(pet);
 };
 
-// 4. Aktualizacja danych zwierzaka
 export const update = async (id: string, data: Partial<CreatePetDTO>): Promise<IPet> => {
-  const updatedPet = await prisma.pet.update({
-    where: { id },
-    data,
-  });
-  return updatedPet as IPet;
+  // Jeśli aktualizujemy też lokalizację, używamy updateRaw, inaczej standardowa Prisma
+  if (data.location) {
+    const [updated] = await prisma.$queryRaw<RawPetRow[]>`
+      UPDATE "Pet"
+      SET name = COALESCE(${data.name}, name),
+          location = ST_SetSRID(ST_MakePoint(${data.location.lng}, ${data.location.lat}), 4326)::geography
+      WHERE id = ${id}::uuid
+      RETURNING *, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng;
+    `;
+    return mapToDomain(updated);
+  }
+  
+  const updatedPet = await prisma.pet.update({ where: { id }, data });
+  // Tu musimy dociągnąć współrzędne, bo .update nie zwróci nam przeliczonych ST_Y/X
+  return findById(id) as Promise<IPet>;
 };
 
-// 5. Usunięcie wpisu
 export const remove = async (id: string): Promise<void> => {
   await prisma.pet.delete({ where: { id } });
 };
 
-// 6. KLUCZOWE DLA "WHERE'S FLUFFY": Wyszukiwanie w pobliżu lokalizacji (Wzór Haversine'a)
-// Szuka zwierzaków w promieniu X kilometrów przy użyciu czystego SQL w Prismie
-export const findNearLocation = async (
-  lat: number,
-  lng: number,
-  radiusInKm: number = 5
-): Promise<IPet[]> => {
-  // Promień Ziemi w kilometrach = 6371
-  const pets = await prisma.$queryRaw<IPet[]>`
-    SELECT id, name, species, latitude, longitude, reward, "ownerId", status, "createdAt", "updatedAt",
-      (6371 * acos(
-        cos(radians(${lat})) * cos(radians(latitude)) * 
-        cos(radians(longitude) - radians(${lng})) + 
-        sin(radians(${lat})) * sin(radians(latitude))
-      )) AS distance
+export const findNearLocation = async (lat: number, lng: number, radiusInMeters: number): Promise<IPet[]> => {
+  const pets = await prisma.$queryRaw<RawPetRow[]>`
+    SELECT *, 
+           ST_Y(location::geometry) as lat,  
+           ST_X(location::geometry) as lng   
     FROM "Pet"
     WHERE status = 'missing'
-    HAVING distance < ${radiusInKm}
-    ORDER BY distance;
+    AND ST_DWithin(location, ST_MakePoint(${lng}, ${lat})::geography, ${radiusInMeters})
+    ORDER BY ST_Distance(location, ST_MakePoint(${lng}, ${lat})::geography);
   `;
-
-  return pets;
+  
+  return pets.map(mapToDomain);
 };

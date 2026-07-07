@@ -1,8 +1,7 @@
 export interface CreatePetDTO {
   name: string;
   species: string;
-  latitude: number;
-  longitude: number;
+  location: { lat: number; lng: number }; // Zmiana
   reward: number;
-  ownerId: string; // Wyciągane z tokenu JWT w kontrolerze
+  ownerId: string;
 }

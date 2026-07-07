@@ -2,8 +2,11 @@ export interface IPet {
   id: string;
   name: string;
   species: string;
-  latitude: number;
-  longitude: number;
+  // Ujednolicamy strukturę lokalizacji
+  location: {
+    lat: number;
+    lng: number;
+  };
   ownerId: string;
   status: 'missing' | 'found';
   reward: number;

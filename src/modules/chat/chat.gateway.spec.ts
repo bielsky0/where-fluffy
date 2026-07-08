@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { createChatGateway } from './chat.gateway.js';
 import { ChatIoServer, ChatIoSocket, JoinChatPayload, SendMessagePayload, SocketData } from './interface/chat.interface.js';
+import { SocketEventRateLimiter } from '../../shared/rate-limit/rate-limiter.socket.js';
 import { buildMockChatService } from './chat.test-helpers.js';
+
+// Zawsze przepuszcza (next() bez błędu) — te testy weryfikują wyłącznie logikę gatewaya,
+// niezależnie od zachowania faktycznego rate-limitera.
+const noopRateLimiter: SocketEventRateLimiter = () => async (_event, next) => next();
 
 // Minimalne, ręcznie skonstruowane mocki io/socket — Socket.io Server/Socket mają bardzo szeroki
 // API (rooms, broadcast, volatile, compress, ...), którego gateway w ogóle nie używa poza
@@ -17,6 +22,7 @@ type MockChatIoSocket = {
   id: string;
   data: SocketData;
   on: jest.Mock;
+  use: jest.Mock;
   emit: jest.Mock;
   join: jest.Mock;
   disconnect: jest.Mock;
@@ -35,6 +41,7 @@ const buildMockSocket = (userId: string): MockChatIoSocket => ({
   id: `socket-${userId}`,
   data: { userId, user: { id: userId } },
   on: jest.fn(),
+  use: jest.fn(),
   emit: jest.fn(),
   join: jest.fn(),
   disconnect: jest.fn(),
@@ -61,7 +68,7 @@ describe('createChatGateway', () => {
     const { io } = buildMockIo();
     const socket = buildMockSocket('user-1');
 
-    createChatGateway(io as unknown as ChatIoServer, chatService);
+    createChatGateway(io as unknown as ChatIoServer, chatService, noopRateLimiter);
     await connect(io, socket);
 
     expect(chatService.markUserOnline).toHaveBeenCalledWith('user-1', socket.id);
@@ -75,7 +82,7 @@ describe('createChatGateway', () => {
     const { io } = buildMockIo();
     const socket = buildMockSocket('');
 
-    createChatGateway(io as unknown as ChatIoServer, chatService);
+    createChatGateway(io as unknown as ChatIoServer, chatService, noopRateLimiter);
     await connect(io, socket);
 
     expect(socket.disconnect).toHaveBeenCalled();
@@ -89,7 +96,7 @@ describe('createChatGateway', () => {
       const { io } = buildMockIo();
       const socket = buildMockSocket('user-1');
 
-      createChatGateway(io as unknown as ChatIoServer, chatService);
+      createChatGateway(io as unknown as ChatIoServer, chatService, noopRateLimiter);
       await connect(io, socket);
 
       const joinChatHandler = getRegisteredHandler<[JoinChatPayload]>(socket.on, 'join_chat');
@@ -139,7 +146,7 @@ describe('createChatGateway', () => {
       const { io, roomEmit } = buildMockIo();
       const socket = buildMockSocket('user-1');
 
-      createChatGateway(io as unknown as ChatIoServer, chatService);
+      createChatGateway(io as unknown as ChatIoServer, chatService, noopRateLimiter);
       await connect(io, socket);
 
       const sendMessageHandler = getRegisteredHandler<[SendMessagePayload]>(socket.on, 'send_message');
@@ -207,7 +214,7 @@ describe('createChatGateway', () => {
       const { io } = buildMockIo();
       const socket = buildMockSocket('user-1');
 
-      createChatGateway(io as unknown as ChatIoServer, chatService);
+      createChatGateway(io as unknown as ChatIoServer, chatService, noopRateLimiter);
       await connect(io, socket);
 
       const disconnectHandler = getRegisteredHandler<[]>(socket.on, 'disconnect');

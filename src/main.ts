@@ -28,9 +28,11 @@ async function bootstrap() {
       subClient.connect()
     ]);
 
-    // 3. Inicjalizacja Socket.io z wstrzykniętymi klientami
+    // 3. Inicjalizacja Socket.io z wstrzykniętymi klientami. `redisClient` (osobno od
+    // pubClient/subClient) trafia tu wyłącznie dla rate-limitera połączeń — patrz
+    // shared/infrastructure/socket.ts i shared/rate-limit/rate-limiter.socket.ts.
     console.log('[BOOTSTRAP] Inicjalizacja Socket.io + Redis Adapter...');
-    const io = initSocket(server, pubClient, subClient);
+    const io = initSocket(server, pubClient, subClient, redisClient);
 
     // 4. Rejestracja bramek
     console.log('[BOOTSTRAP] Rejestracja bramek czasu rzeczywistego...');

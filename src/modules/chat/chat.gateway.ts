@@ -1,14 +1,22 @@
 import { JoinChatSchema, SendMessageSchema } from './chat.schema.js';
 import { ChatService } from './chat.service.js';
 import { ChatIoServer, ChatIoSocket } from './interface/chat.interface.js';
+import { SocketEventRateLimiter } from '../../shared/rate-limit/rate-limiter.socket.js';
 
-export const createChatGateway = (io: ChatIoServer, chatService: ChatService): void => {
+export const createChatGateway = (io: ChatIoServer, chatService: ChatService, rateLimitEvents: SocketEventRateLimiter): void => {
   io.on('connection', async (socket: ChatIoSocket) => {
     const userId = socket.data.userId;
     if (!userId) return socket.disconnect();
 
     await chatService.markUserOnline(userId, socket.id);
     console.log(`[WS] Połączono: ${userId}`);
+
+    // Limit częstotliwości zdarzeń (join_chat/send_message/...) per userId — patrz
+    // shared/rate-limit/rate-limiter.socket.ts. socket.use() NIE rozłącza automatycznie przy
+    // next(err) (inaczej niż io.use() w shared/infrastructure/socket.ts), więc obsługujemy to
+    // jawnie przez zdarzenie 'error', zgodnie z oficjalnym wzorcem Socket.io.
+    socket.use(rateLimitEvents(userId));
+    socket.on('error', (error) => socket.emit('error_response', { message: error.message }));
 
     // --- EVENT: Dołączenie ---
     socket.on('join_chat', async (data) => {

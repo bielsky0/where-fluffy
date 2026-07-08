@@ -8,21 +8,36 @@ import type { RedisClientType } from 'redis';
 // zdarzeń WS żyje w jego interfejsie. Jeśli dojdzie drugi moduł WS, te typy powinny się
 // przenieść w bardziej neutralne miejsce i połączyć jako unia zdarzeń z obu modułów.
 import type { ChatIoServer } from '../../modules/chat/interface/chat.interface.js';
+import { createSocketConnectionRateLimiter } from '../rate-limit/rate-limiter.socket.js';
 
 let io: ChatIoServer;
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 
-// Przyjmujemy pub/sub jako argumenty!
+// Przyjmujemy pub/sub jako argumenty! `redisClient` (ogólnego przeznaczenia, NIE pub/sub) trafia
+// tu osobno wyłącznie dla rate-limitera połączeń — patrz rate-limiter.socket.ts i CLAUDE.md
+// "Rate limiting" o tym, dlaczego nie można reużyć pubClient/subClient do tego celu.
 export const initSocket = (
   httpServer: HttpServer,
   pubClient: RedisClientType,
-  subClient: RedisClientType
+  subClient: RedisClientType,
+  redisClient: RedisClientType,
 ): ChatIoServer => {
 
   io = new Server(httpServer, {
     cors: { origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true },
     adapter: createAdapter(pubClient, subClient), // Wpinamy adapter
   });
+
+  // Limit prób połączenia per IP, ZANIM zweryfikujemy JWT poniżej — tania, pierwsza linia
+  // obrony przed zalewem handshake'ów (celowo przed middleware'em JWT, nie po).
+  io.use(
+    createSocketConnectionRateLimiter(redisClient, {
+      keyPrefix: 'rl:ws:conn',
+      points: 5,
+      duration: 10,
+      blockDuration: 60,
+    }),
+  );
 
   io.use((socket, next) => {
     try {

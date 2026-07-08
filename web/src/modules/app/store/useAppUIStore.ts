@@ -13,8 +13,10 @@ export type AccordionStep = 1 | 2 | 3;
 // at all — see AppShell.tsx); 'map' is the pre-existing STATE_A/B/C map+drawer stack. Only
 // 'map' ever mounts <MapView/>, so switching back to 'feed' unmounts it (deliberate — see
 // AppShell.tsx's comment on why this trades away the old "map state always survives" guarantee
-// for not paying Leaflet's cost while the user is just browsing the feed).
-export type ActiveView = 'feed' | 'map';
+// for not paying Leaflet's cost while the user is just browsing the feed). 'profile' is
+// ProfilePage (modules/profile) — same "mounted only while active" treatment, reached only via
+// BottomNav's auth-gated "Profil" tab (see AppShell.tsx's runAction).
+export type ActiveView = 'feed' | 'map' | 'profile';
 
 export interface LocationFilter {
   label: string;
@@ -72,6 +74,7 @@ interface AppUIState {
   applyFilters: () => void;
   showAllResults: () => void;
   resetToMain: () => void;
+  showProfile: () => void;
 }
 
 // Drives the three top-level screen states described in AppShell.tsx (STATE_A: main map view,
@@ -182,4 +185,6 @@ export const useAppUIStore = create<AppUIState>((set, get) => ({
       draftTimeframe: 'all',
       preSearchState: null,
     }),
+
+  showProfile: () => set({ activeView: 'profile' }),
 }));

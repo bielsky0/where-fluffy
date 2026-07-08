@@ -1,7 +1,7 @@
-import { toast } from 'sonner';
 import { usePetMapStore } from '@/modules/pets/store/usePetMapStore';
 import { AddReportModal } from '@/modules/pets/components/AddReportModal';
 import { MapExplorerPage } from '@/modules/pets/pages/MapExplorerPage';
+import ProfilePage from '@/modules/profile/pages/ProfilePage';
 import { AuthModal } from '@/modules/auth/components/AuthModal';
 import { useAuthStore, type AttemptedAction } from '@/modules/auth/store/useAuthStore';
 import { useSessionStore } from '@/modules/auth/store/useSessionStore';
@@ -13,12 +13,14 @@ type ActionId = NavAction;
 
 // Pure view orchestrator — SRP is "decide which top-level view is on screen, and own the
 // layout chrome that's global to all of them." Nothing else. It knows exactly one piece of
-// state, `activeView` ('feed' | 'map'), and mounts exactly one of two fully self-sufficient
-// pages for it — MainFeedPage (own data fetching, own store wiring, no props — see its own
-// comment) or MapExplorerPage (modules/pets/pages, same self-sufficiency, encapsulating
-// STATE_A/B/C entirely). AppShell never selects `currentAppState` and never spells out
-// 'STATE_A' | 'STATE_B' | 'STATE_C' anywhere in this file — that's the whole point: those are
-// MapExplorerPage's (and SearchModal's) internal business, not this component's.
+// state, `activeView` ('feed' | 'map' | 'profile'), and mounts exactly one of three fully
+// self-sufficient pages for it — MainFeedPage (own data fetching, own store wiring, no props —
+// see its own comment), MapExplorerPage (modules/pets/pages, same self-sufficiency, encapsulating
+// STATE_A/B/C entirely), or ProfilePage (modules/profile/pages, same self-sufficiency again,
+// owning its own mock listings/edit-overlay/confetti state). AppShell never selects
+// `currentAppState` and never spells out 'STATE_A' | 'STATE_B' | 'STATE_C' anywhere in this
+// file — that's the whole point: those are MapExplorerPage's (and SearchModal's) internal
+// business, not this component's.
 //
 // What *does* still belong here, because it's genuinely global rather than page-specific:
 //   - BottomNav — same three destinations regardless of which page is mounted.
@@ -46,6 +48,7 @@ export default function AppShell() {
   const activeView = useAppUIStore((state) => state.activeView);
   const currentAppState = useAppUIStore((state) => state.currentAppState);
   const resetToMain = useAppUIStore((state) => state.resetToMain);
+  const showProfile = useAppUIStore((state) => state.showProfile);
 
   const clearSelection = usePetMapStore((state) => state.clearSelection);
   const sheetSnap = usePetMapStore((state) => state.sheetSnap);
@@ -66,9 +69,9 @@ export default function AppShell() {
   // usePetMapStore's pet-selection and drawer position directly, since those two stores are
   // deliberately independent of each other (see usePetMapStore.ts) and coordinating them for
   // a cross-cutting "go home" action is exactly what an orchestrator is for. "Zgłoś" opens
-  // AddReportModal. "Profil" has no page to land on yet — the backend exposes no
-  // session/profile endpoint (see useSessionStore's own comment) — so it's a placeholder
-  // toast, same pattern as AuthModal's social-login buttons.
+  // AddReportModal. "Profil" switches activeView to 'profile' (modules/profile/pages/ProfilePage)
+  // via useAppUIStore's showProfile — mock stats/listings until a real profile endpoint exists
+  // (see mockProfileData.ts).
   const runAction = (action: ActionId) => {
     if (action === 'list') {
       resetToMain();
@@ -77,7 +80,7 @@ export default function AppShell() {
     } else if (action === 'report') {
       openAddReport();
     } else if (action === 'profile') {
-      toast('Profil dostępny wkrótce');
+      showProfile();
     }
   };
 
@@ -93,15 +96,16 @@ export default function AppShell() {
     if (attemptedAction) runAction(attemptedAction.id as ActionId);
   };
 
+  const activeAction: NavAction | undefined =
+    activeView === 'feed' ? 'list' : activeView === 'profile' ? 'profile' : undefined;
+
   return (
     <div className="relative h-dvh overflow-hidden">
-      {activeView === 'feed' ? <MainFeedPage /> : <MapExplorerPage />}
+      {activeView === 'feed' && <MainFeedPage />}
+      {activeView === 'map' && <MapExplorerPage />}
+      {activeView === 'profile' && <ProfilePage />}
 
-      <BottomNav
-        onAction={runGatedAction}
-        activeAction={activeView === 'feed' ? 'list' : undefined}
-        hidden={isBottomNavHidden}
-      />
+      <BottomNav onAction={runGatedAction} activeAction={activeAction} hidden={isBottomNavHidden} />
 
       {isAddReportOpen && <AddReportModal onClose={closeAddReport} />}
       <AuthModal onAuthenticated={handleAuthenticated} />

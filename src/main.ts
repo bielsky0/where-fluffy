@@ -1,3 +1,8 @@
+// Musi być pierwszym importem w całym procesie — OpenTelemetry patchuje moduły (http, prisma,
+// socket.io, redis) w momencie ich załadowania, więc rejestracja instrumentacji nie może nastąpić
+// po tym, jak którykolwiek z nich zostanie zaimportowany (nawet transitywnie przez './app.js').
+import { shutdownOtel } from './instrumentation.js';
+
 import http from 'http';
 import { createApp } from './app.js';
 import { initSocket } from './shared/infrastructure/socket.js';
@@ -54,6 +59,9 @@ async function bootstrap() {
           io.close();
           await prisma.$disconnect();
           await Promise.all([redisClient.quit(), pubClient.quit(), subClient.quit()]);
+          // Na końcu, żeby spany/metryki wygenerowane przez zamykanie powyższych klientów
+          // (same są zainstrumentowane) zdążyły się jeszcze wyeksportować przed exitem.
+          await shutdownOtel();
           console.log('[SHUTDOWN] Zamknięto czysto.');
           process.exit(0);
         } catch (error) {

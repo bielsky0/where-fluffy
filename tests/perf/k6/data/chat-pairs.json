@@ -1,0 +1,62 @@
+[
+  {
+    "owner": {
+      "email": "perf-owner-1@loadtest.local",
+      "password": "PerfTest123!",
+      "name": "Perf Owner 1"
+    },
+    "finder": {
+      "email": "perf-finder-1@loadtest.local",
+      "password": "PerfTest123!",
+      "name": "Perf Finder 1"
+    }
+  },
+  {
+    "owner": {
+      "email": "perf-owner-2@loadtest.local",
+      "password": "PerfTest123!",
+      "name": "Perf Owner 2"
+    },
+    "finder": {
+      "email": "perf-finder-2@loadtest.local",
+      "password": "PerfTest123!",
+      "name": "Perf Finder 2"
+    }
+  },
+  {
+    "owner": {
+      "email": "perf-owner-3@loadtest.local",
+      "password": "PerfTest123!",
+      "name": "Perf Owner 3"
+    },
+    "finder": {
+      "email": "perf-finder-3@loadtest.local",
+      "password": "PerfTest123!",
+      "name": "Perf Finder 3"
+    }
+  },
+  {
+    "owner": {
+      "email": "perf-owner-4@loadtest.local",
+      "password": "PerfTest123!",
+      "name": "Perf Owner 4"
+    },
+    "finder": {
+      "email": "perf-finder-4@loadtest.local",
+      "password": "PerfTest123!",
+      "name": "Perf Finder 4"
+    }
+  },
+  {
+    "owner": {
+      "email": "perf-owner-5@loadtest.local",
+      "password": "PerfTest123!",
+      "name": "Perf Owner 5"
+    },
+    "finder": {
+      "email": "perf-finder-5@loadtest.local",
+      "password": "PerfTest123!",
+      "name": "Perf Finder 5"
+    }
+  }
+]

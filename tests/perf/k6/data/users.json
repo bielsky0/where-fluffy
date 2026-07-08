@@ -1,0 +1,27 @@
+[
+  {
+    "email": "perf-user-1@loadtest.local",
+    "password": "PerfTest123!",
+    "name": "Perf User 1"
+  },
+  {
+    "email": "perf-user-2@loadtest.local",
+    "password": "PerfTest123!",
+    "name": "Perf User 2"
+  },
+  {
+    "email": "perf-user-3@loadtest.local",
+    "password": "PerfTest123!",
+    "name": "Perf User 3"
+  },
+  {
+    "email": "perf-user-4@loadtest.local",
+    "password": "PerfTest123!",
+    "name": "Perf User 4"
+  },
+  {
+    "email": "perf-user-5@loadtest.local",
+    "password": "PerfTest123!",
+    "name": "Perf User 5"
+  }
+]

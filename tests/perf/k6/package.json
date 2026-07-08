@@ -1,0 +1,8 @@
+{
+  "name": "where-fluffy-k6-perf",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@types/k6": "^2.0.0"
+  }
+}

@@ -11,7 +11,7 @@ export default function LoginPage() {
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     await login.mutateAsync({ email, password });
-    navigate('/app/pets');
+    navigate('/app');
   };
 
   return (

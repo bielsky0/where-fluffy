@@ -10,7 +10,7 @@ export default function LandingPage() {
 
   return (
     <main>
-      <Hero onGetStarted={() => navigate('/login')} />
+      <Hero onGetStarted={() => navigate('/app')} />
     </main>
   );
 }

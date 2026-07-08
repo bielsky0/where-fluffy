@@ -14,12 +14,16 @@ interface BottomSheetProps {
   snap: BottomSheetSnap;
   onSnapChange: (snap: BottomSheetSnap) => void;
   children: ReactNode;
+  // Pixel gap to leave between the sheet's bottom edge and the viewport bottom — for
+  // AppShell.tsx's fixed action bar, so the sheet stops above it instead of underneath it.
+  // Zero z-index fighting between the two: they simply never occupy the same space.
+  bottomOffset?: number;
 }
 
 // Minimal drag-to-snap bottom sheet — no gesture library, just a pointer-drag threshold on
 // the handle. Rendered as an absolutely-positioned overlay on top of <MapView/> (see
-// PetsMapView.tsx), so dragging it never touches the map's own DOM node or triggers a re-mount.
-export function BottomSheet({ snap, onSnapChange, children }: BottomSheetProps) {
+// AppShell.tsx), so dragging it never touches the map's own DOM node or triggers a re-mount.
+export function BottomSheet({ snap, onSnapChange, children, bottomOffset = 0 }: BottomSheetProps) {
   const dragStartY = useRef<number | null>(null);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -45,7 +49,7 @@ export function BottomSheet({ snap, onSnapChange, children }: BottomSheetProps) 
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: 0,
+        bottom: bottomOffset,
         // Must beat Leaflet's own pane z-indexes (tile pane 200, marker pane 600, popup pane
         // 700) — an implicit `z-index: auto` sibling loses to those explicitly-indexed panes
         // regardless of DOM order, which otherwise hides the sheet entirely behind the map.

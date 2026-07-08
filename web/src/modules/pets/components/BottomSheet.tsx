@@ -36,6 +36,13 @@ interface BottomSheetProps {
   // BOTTOM_NAV_CLEARANCE here so the drawer's own bottom edge sits above the nav instead of
   // underneath it; defaults to 0 for any future caller with no nav to clear.
   bottomOffset?: number | string;
+  // True while MapExplorerPage's floating <PetDetailPanel/> owns the bottom of the screen (a
+  // pin tap on the map, see usePetMapStore's selectedPetId) — the results list this sheet holds
+  // isn't what the user is looking at anymore, so it slides fully out of view below the
+  // viewport (a snap position past 'collapsed', not just another one of SNAP_FRACTIONS) rather
+  // than sitting at 'collapsed' and leaving its header strip visible behind the floating card.
+  // Drag is disabled while hidden — there's nothing to grab, the sheet isn't on screen.
+  hidden?: boolean;
 }
 
 function formatResultCount(count: number): string {
@@ -49,7 +56,14 @@ function formatResultCount(count: number): string {
 // below it joins in as a second drag trigger too, but only below 'expanded' — see the content
 // div's own comment for why "raise the sheet" must win over "scroll the list" at 'half', and why
 // that flips back to plain scrolling once fully 'expanded'.
-export function BottomSheet({ snap, onSnapChange, resultCount, children, bottomOffset = 0 }: BottomSheetProps) {
+export function BottomSheet({
+  snap,
+  onSnapChange,
+  resultCount,
+  children,
+  bottomOffset = 0,
+  hidden = false,
+}: BottomSheetProps) {
   const controls = useAnimation();
   const dragControls = useDragControls();
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -119,10 +133,20 @@ export function BottomSheet({ snap, onSnapChange, resultCount, children, bottomO
 
   useEffect(() => {
     if (sheetHeight === 0) return;
+    // `hidden` overrides whatever `snap` is: a full sheetHeight of `y` pushes the sheet's own
+    // box entirely past the viewport's bottom edge (hardware-accelerated `transform:
+    // translateY(...)`, same mechanism BottomNav.tsx's `translate-y-full` uses, just driven
+    // through framer's `y` motion value since this sheet is already driven that way for
+    // dragging) — a plain tween, not the drag-restore spring below, since this transition isn't
+    // the user settling a drag gesture.
+    if (hidden) {
+      controls.start({ y: sheetHeight, transition: { duration: 0.3, ease: 'easeOut' } });
+      return;
+    }
     controls.start({ y: yFor(snap), transition: { type: 'spring', damping: 32, stiffness: 300 } });
     // sheetHeight is intentionally included: a viewport resize (orientation change, mobile
     // browser chrome show/hide) must re-snap to the *current* snap's new pixel offset.
-  }, [snap, sheetHeight]);
+  }, [snap, sheetHeight, hidden]);
 
   const handleDragEnd = (_event: unknown, info: PanInfo) => {
     const draggedY = yFor(snap) + info.offset.y;
@@ -146,7 +170,7 @@ export function BottomSheet({ snap, onSnapChange, resultCount, children, bottomO
   return (
     <motion.div
       ref={sheetRef}
-      drag="y"
+      drag={hidden ? false : 'y'}
       dragListener={false}
       dragControls={dragControls}
       dragConstraints={{ top: yFor('expanded'), bottom: yFor('collapsed') }}
@@ -171,7 +195,10 @@ export function BottomSheet({ snap, onSnapChange, resultCount, children, bottomO
       // MapExplorerPage.tsx) at the same moment `snap` changes to/from 'collapsed', so without
       // an explicit transition here the CSS `bottom` jump would snap instantly while the `y`
       // spring above is still animating, reading as a small double-motion glitch.
-      className="fixed inset-x-0 z-[1000] flex flex-col rounded-t-[32px] bg-white text-black shadow-[0_-8px_30px_-6px_rgba(0,0,0,0.18)] transition-[bottom] duration-300 ease-out"
+      className={cn(
+        'fixed inset-x-0 z-[1000] flex flex-col rounded-t-[32px] bg-white text-black shadow-[0_-8px_30px_-6px_rgba(0,0,0,0.18)] transition-[bottom] duration-300 ease-out',
+        hidden && 'pointer-events-none',
+      )}
     >
       <div
         onPointerDown={startDrag}

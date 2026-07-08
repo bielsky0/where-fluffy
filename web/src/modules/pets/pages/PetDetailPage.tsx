@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { usePets } from '../api/usePets';
-import { useSightings } from '../api/useSightings';
+import { useCreateSighting, useSightings } from '../api/useSightings';
 import { DEFAULT_CENTER } from '../lib/geo';
 import { formatRelativeTime, formatTimelineTimestamp } from '../lib/format';
 import type { Pet, PetStatus } from '../types/pet.types';
@@ -245,8 +245,23 @@ export default function PetDetailPage() {
   const pet = pets?.find((candidate) => candidate.id === petId) ?? null;
 
   const { data: sightings } = useSightings(petId);
+  // Hooks can't be called conditionally, so this is created unconditionally even before `pet`
+  // is known to exist — harmless, since the form that actually fires it only renders once the
+  // loading/error/!pet early-returns below have already passed and `petId` is guaranteed set.
+  const createSighting = useCreateSighting(petId ?? '');
+  const [sightingDescription, setSightingDescription] = useState('');
 
   const handleBack = () => navigate(-1);
+
+  const handleAddSighting = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!sightingDescription.trim()) return;
+    // `type: 'general'` — a plain log entry, no GPS pin required. A "sighted at this exact
+    // spot" entry (type: 'sighted') needs location, which this quick compose form doesn't
+    // collect (see AddReportModal.tsx for the geolocation-prompt pattern that would apply).
+    await createSighting.mutateAsync({ description: sightingDescription.trim(), type: 'general' });
+    setSightingDescription('');
+  };
 
   // Starting a specific chat room requires {petId, finderId} (see chat.service.ts's
   // joinChatRoom) — finderId isn't resolvable from a Pet alone (no owner/finder identity is
@@ -350,6 +365,32 @@ export default function PetDetailPage() {
           <h2 className="mb-4 text-lg font-bold" style={{ color: ANTHRACITE }}>
             Historia zgłoszeń
           </h2>
+
+          <form onSubmit={handleAddSighting} className="mb-5 flex flex-col gap-2">
+            <textarea
+              value={sightingDescription}
+              onChange={(event) => setSightingDescription(event.target.value)}
+              placeholder="Widziałeś to zwierzę? Opisz co i gdzie…"
+              required
+              rows={2}
+              className="w-full resize-none rounded-2xl border px-3.5 py-2.5 text-sm outline-none focus:border-neutral-400"
+              style={{ borderColor: HAIRLINE_BORDER, color: ANTHRACITE }}
+            />
+            {createSighting.isPaused && (
+              <p className="text-xs" style={{ color: MUTED_GRAY }}>
+                Offline — zgłoszenie wyśle się automatycznie, gdy wrócisz do sieci.
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={createSighting.isPending}
+              className="self-end rounded-full px-5 py-2 text-sm font-bold text-white transition-transform active:scale-95 disabled:opacity-60"
+              style={{ backgroundColor: CORAL }}
+            >
+              {createSighting.isPending ? 'Wysyłanie…' : 'Dodaj zgłoszenie'}
+            </button>
+          </form>
+
           {!sightings || sightings.length === 0 ? (
             <p className="text-sm" style={{ color: MUTED_GRAY }}>
               Brak zgłoszeń widzenia — bądź pierwszą osobą, która doda wskazówkę.

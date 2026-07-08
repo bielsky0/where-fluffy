@@ -91,6 +91,8 @@ export function MapExplorerPage() {
   // list components ignorant of how many results they're being handed for. "Collapsed" still
   // renders the full list underneath (see BottomSheet.tsx) since it's clipped out of view
   // there anyway, so slicing it too would only add a pointless flash when dragging past half.
+
+  //TODO infinity scroll list
   const visibleResultsPets = sheetSnap === 'half' ? filteredPets.slice(0, 1) : filteredPets;
 
   const resultsHeadline = appliedFilters.petType
@@ -149,7 +151,10 @@ export function MapExplorerPage() {
         )}
       </AnimatePresence>
 
-      {/* Layer 3: results drawer */}
+      {/* Layer 3: results drawer — slides fully out of view while a pin selection drives Layer
+          4's floating preview card instead (see BottomSheet's own `hidden` prop and Layer 4
+          below); its own content keeps rendering underneath so reappearing is instant, not a
+          re-fetch/re-mount. */}
       {currentAppState === 'STATE_C' && (
         <BottomSheet
           snap={sheetSnap}
@@ -160,15 +165,15 @@ export function MapExplorerPage() {
           // same moment, or the collapsed header would still stop short of the real screen
           // edge, leaving the exact gap the nav used to fill but now empty.
           bottomOffset={sheetSnap === 'collapsed' ? 0 : BOTTOM_NAV_CLEARANCE}
+          hidden={selectedPet !== null}
         >
           {isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Ładowanie…</p>}
           {isError && (
             <p className="py-8 text-center text-sm text-destructive">Nie udało się wczytać zwierzaków w pobliżu.</p>
           )}
-          {!isLoading && !isError && selectedPet && <PetDetailPanel pet={selectedPet} onBack={clearSelection} />}
-          {!isLoading && !isError && !selectedPet && (
+          {!isLoading && !isError && (
             <PetResultsList
-              pets={visibleResultsPets}
+              pets={filteredPets}
               origin={queryCenter}
               selectedPetId={selectedPetId}
               imageAspectClassName={sheetSnap === 'half' ? 'aspect-[16/9]' : undefined}
@@ -176,6 +181,13 @@ export function MapExplorerPage() {
           )}
         </BottomSheet>
       )}
+
+      {/* Layer 4: floating sighting preview card — a map pin tap (MapView's onSelectPet) is the
+          only thing that ever mounts this; it's fully decoupled from currentAppState/sheetSnap,
+          so it works the same whether the results drawer is present (STATE_C) or not. */}
+      <AnimatePresence>
+        {selectedPet && <PetDetailPanel key={selectedPet.id} pet={selectedPet} origin={queryCenter} onClose={clearSelection} />}
+      </AnimatePresence>
     </>
   );
 }

@@ -10,6 +10,8 @@ services:
     volumes:
       - ./init-scripts:/docker-entrypoint-initdb.d
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - fluffy-net
 
   pgbouncer:
     image: edoburu/pgbouncer:latest
@@ -22,17 +24,137 @@ services:
       - "6432:6432"
     depends_on:
       - db
+    networks:
+      - fluffy-net
 
   redis:
     image: redis:alpine
     ports:
       - "6379:6379"
+    networks:
+      - fluffy-net
 
-  jaeger:
-    image: jaegertracing/all-in-one:latest
+  api:
+    build:
+      context: ./src
+    environment:
+      DATABASE_URL: "postgresql://user:password@db:5432/fluffy_db"
+      REDIS_URL: "redis://redis:6379"
+      OTEL_SERVICE_NAME: "where-fluffy-api"
+      # Only this differs from the host-run `npm run dev` workflow's .env: inside the compose
+      # network the collector is reachable at the "alloy" service name, not localhost.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy:4317"
+      NODE_ENV: production
+      PORT: "3000"
+      # Same value as auth.middleware.ts / socket.ts's hardcoded fallback — set here explicitly
+      # so it's visible as something to replace with a real secret (env/secrets manager) before
+      # this ever runs anywhere but a laptop.
+      JWT_SECRET: "super-secret-key-change-me"
     ports:
-      - "16686:16686" # UI
-      - "4317:4317"   # OTLP
+      - "3000:3000" # alternative to running `npm run dev` on the host — don't run both at once,
+                     # they'd fight over this same host port.
+    depends_on:
+      - db
+      - redis
+      - alloy
+    networks:
+      - fluffy-net
+
+  # ---------------------------------------------------------------------------
+  # Observability (LGTM + Alloy). Alloy is the single collector every signal
+  # flows through: OTLP traces/metrics from the app land on 4317/4318, Docker
+  # container logs are scraped straight from the daemon — nothing talks to
+  # Loki/Tempo/Prometheus directly except Alloy and Grafana's queries.
+  # ---------------------------------------------------------------------------
+
+  alloy:
+    image: grafana/alloy:latest
+    command:
+      - "run"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--storage.path=/var/lib/alloy/data"
+      - "/etc/alloy/config.alloy"
+    volumes:
+      - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    ports:
+      - "4317:4317"   # OTLP gRPC (traces + metrics) — app's OTEL_EXPORTER_OTLP_ENDPOINT points here
+      - "4318:4318"   # OTLP HTTP, same receiver
+      - "12345:12345" # Alloy UI + its own /metrics (component health, scraped by Prometheus below)
+    depends_on:
+      - loki
+      - tempo
+      - prometheus
+    networks:
+      - fluffy-net
+
+  loki:
+    image: grafana/loki:3.3.2
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    networks:
+      - fluffy-net
+
+  tempo:
+    image: grafana/tempo:2.7.0
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./infra/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200" # Tempo query API — used by Grafana's Tempo datasource
+    depends_on:
+      - prometheus
+    networks:
+      - fluffy-net
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      # Required so Alloy (and Tempo's metrics-generator) can push metrics via
+      # remote_write instead of Prometheus having to scrape them.
+      - "--web.enable-remote-write-receiver"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - fluffy-net
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      # Dev-only convenience — do not ship a fixed admin password like this to production.
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor traceToMetrics
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000" # host 3000 is already the app itself (see main.ts)
+    depends_on:
+      - loki
+      - tempo
+      - prometheus
+    networks:
+      - fluffy-net
 
 volumes:
   pgdata:
+  loki-data:
+  tempo-data:
+  prometheus-data:
+  grafana-data:
+  alloy-data:
+
+networks:
+  fluffy-net:
+    driver: bridge

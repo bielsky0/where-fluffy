@@ -1,0 +1,6 @@
+apiVersion: 1
+
+# Empty on purpose — no pre-built dashboards ship with this stack yet. This file's only job is
+# to stop Grafana logging "can't read dashboard provisioning files from directory" on every
+# boot; add a `providers:` entry here once you have dashboard JSON to provision.
+providers: []

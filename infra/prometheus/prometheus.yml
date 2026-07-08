@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Alloy's own component health/throughput metrics (queue lengths, dropped spans, etc.) —
+  # NOT the app's metrics. The app's OTLP metrics arrive via remote_write (see
+  # --web.enable-remote-write-receiver in docker-compose.yml and config.alloy's
+  # otelcol.exporter.prometheus -> prometheus.remote_write pipeline), so there's no scrape
+  # job for the app itself: Alloy pushes, it isn't pulled.
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+
+  # Tempo's own operational metrics (ingestion rate, compaction, etc.).
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]

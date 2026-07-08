@@ -1,0 +1,89 @@
+// Grafana Alloy config (River/Flow syntax). Alloy is the single collector for all three
+// signals — the app and Docker daemon only ever talk to Alloy, never directly to
+// Loki/Tempo/Prometheus. Promtail is EOL, so log scraping below uses Alloy's native
+// discovery.docker + loki.source.docker components instead.
+
+// ---------------------------------------------------------------------------
+// LOGS: discover every running container via the Docker socket, tail its stdout/stderr,
+// and push to Loki. This is what replaces Promtail.
+// ---------------------------------------------------------------------------
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Docker's container name comes through as a relabel-only meta field
+// (__meta_docker_container_name) — promote it to a real "container" label so it's queryable
+// in Grafana/Loki (e.g. `{container="where-fluffy-db-1"}`), and drop the leading "/" Docker
+// always prefixes container names with.
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "default" {
+  host             = "unix:///var/run/docker.sock"
+  targets          = discovery.relabel.containers.output
+  relabel_rules    = discovery.relabel.containers.rules
+  forward_to       = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TRACES + METRICS: receive OTLP from the Node app (instrumentation.ts points here),
+// batch, then fan out — traces to Tempo, metrics converted to Prometheus's data model and
+// remote_written into Prometheus.
+// ---------------------------------------------------------------------------
+
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    traces  = [otelcol.processor.batch.default.input]
+    metrics = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  output {
+    traces  = [otelcol.exporter.otlp.tempo.input]
+    metrics = [otelcol.exporter.prometheus.default.input]
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls {
+      insecure = true
+    }
+  }
+}
+
+// Converts the OTLP metrics data model to Prometheus's and hands off to a prometheus.*
+// component — otelcol.exporter.prometheus never talks to Prometheus itself, it just bridges
+// into Alloy's native Prometheus pipeline components.
+otelcol.exporter.prometheus "default" {
+  forward_to = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.remote_write "local" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "where-fluffy-observability-tests",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

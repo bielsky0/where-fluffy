@@ -1,21 +1,13 @@
 import { useState, type FormEvent } from 'react';
+import { getCurrentPosition } from '@/shared/lib/geolocation';
 import { useCreatePetReport } from '../api/usePets';
 
 interface AddReportModalProps {
   onClose: () => void;
 }
 
-function getCurrentPosition(): Promise<{ lat: number; lng: number }> {
-  return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
-      reject,
-    );
-  });
-}
-
-// Quick-action modal for the "+" button in PetsMapView.tsx. Only "Lost" actually submits —
-// see the disabled "Found" tab below for why.
+// Quick-action modal opened by BottomNav's "Zgłoś" button (see AppShell.tsx's runAction), gated
+// behind auth. Only "Lost" actually submits — see the disabled "Found" tab below for why.
 export function AddReportModal({ onClose }: AddReportModalProps) {
   const [name, setName] = useState('');
   const [species, setSpecies] = useState('');

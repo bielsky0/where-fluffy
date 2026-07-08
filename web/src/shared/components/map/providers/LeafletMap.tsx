@@ -1,29 +1,62 @@
-import { MapContainer, Marker, TileLayer } from 'react-leaflet';
+import { useEffect } from 'react';
+import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
 import { divIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { MapProps } from '../types';
+import type { Coordinate, MapMarkerProps, MapProps } from '../types';
 
-const DEFAULT_MARKER_COLOR = '#ef4444';
+const TONE_ACCENT: Record<MapMarkerProps['tone'], string> = {
+  danger: '#dc2626',
+  warning: '#f97316',
+};
 
-// Plain colored-dot divIcon instead of Leaflet's default Icon — the default marker image
-// paths break under bundlers (a well-known Leaflet/webpack-and-friends gotcha, since it
-// resolves icon URLs relative to a CSS file that Vite has already moved/renamed) and fixing
-// it properly needs importing the PNGs and calling `Icon.Default.mergeOptions`. A divIcon
-// sidesteps that entirely — no image assets, no runtime path patching.
-function createMarkerIcon(color: string) {
-  return divIcon({
-    className: '',
-    html: `<span style="display:block;width:14px;height:14px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></span>`,
-    iconSize: [14, 14],
-  });
+// Airbnb-style horizontal pill divIcon instead of Leaflet's default dropped-pin Icon — sidesteps
+// the well-known Leaflet/bundler gotcha where the default Icon's image paths resolve relative to
+// a CSS file Vite has already moved/renamed, and (being plain HTML) lets the pill's width follow
+// its own text content rather than a fixed icon size.
+//
+// `iconSize: [0, 0]` + `iconAnchor: [0, 0]` puts Leaflet's positioning wrapper's top-left exactly
+// at the marker's lat/lng point with zero built-in offset; the inner span's own
+// `translate(-50%, -100%)` then does the actual anchoring, centering the pill horizontally and
+// sitting its bottom edge on that point — the standard technique for a variable-width Leaflet
+// divIcon, since Leaflet has no notion of "size to content" for iconSize itself.
+function createPetMarkerIcon({ emoji, freshness, tone, selected }: MapMarkerProps) {
+  const accent = TONE_ACCENT[tone];
+  const html = `
+    <span style="
+      display:inline-flex;align-items:center;gap:5px;
+      background:#ffffff;border-radius:9999px;padding:6px 12px;
+      box-shadow:0 4px 14px -2px rgba(0,0,0,0.3);
+      border:${selected ? `2px solid ${accent}` : '1px solid rgba(0,0,0,0.06)'};
+      white-space:nowrap;font:700 12px/1 system-ui,-apple-system,sans-serif;
+      transform:translate(-50%,-100%) scale(${selected ? 1.1 : 1});
+      transform-origin:bottom center;
+    ">
+      <span style="font-size:15px;line-height:1;">${emoji}</span>
+      <span style="color:${accent};">${freshness}</span>
+    </span>`;
+
+  return divIcon({ className: '', html, iconSize: [0, 0], iconAnchor: [0, 0] });
 }
 
-const defaultMarkerIcon = createMarkerIcon(DEFAULT_MARKER_COLOR);
+// Imperative pan-to-selection, mounted inside <MapContainer/> so it can reach the Leaflet
+// map instance via useMap() — MapContainer's own `center` prop only applies once, on mount
+// (a well-known react-leaflet limitation), so re-centering on a later selection has to go
+// through flyTo instead of just changing a prop.
+function FlyToFocus({ target }: { target: Coordinate | null | undefined }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!target) return;
+    map.flyTo([target.lat, target.lng], map.getZoom(), { duration: 0.6 });
+  }, [target?.lat, target?.lng]);
+
+  return null;
+}
 
 // react-leaflet implementation of the `<Map />` facade (see ../Map.tsx). This is the only
 // file in the app allowed to import from `react-leaflet`/`leaflet` — everything else goes
 // through the provider-agnostic `MapProps`/`MapMarkerProps` in ../types.ts.
-export function LeafletMap({ center, zoom = 13, markers = [], className, style }: MapProps) {
+export function LeafletMap({ center, zoom = 13, markers = [], className, style, focusCenter }: MapProps) {
   return (
     <MapContainer
       center={[center.lat, center.lng]}
@@ -35,11 +68,12 @@ export function LeafletMap({ center, zoom = 13, markers = [], className, style }
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      <FlyToFocus target={focusCenter} />
       {markers.map((marker) => (
         <Marker
           key={marker.id}
           position={[marker.position.lat, marker.position.lng]}
-          icon={marker.color ? createMarkerIcon(marker.color) : defaultMarkerIcon}
+          icon={createPetMarkerIcon(marker)}
           opacity={marker.opacity ?? 1}
           eventHandlers={marker.onClick ? { click: marker.onClick } : undefined}
         />

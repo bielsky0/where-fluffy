@@ -1,16 +1,186 @@
+import { useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { motion, useAnimation } from 'framer-motion';
+import type { Coordinate } from '@/shared/components/map/types';
+import { cn } from '@/shared/lib/cn';
+import { distanceMeters, formatDistance, formatRelativeTime } from '../lib/format';
 import type { Pet } from '../types/pet.types';
 
 interface PetCardProps {
   pet: Pet;
+  origin: Coordinate;
+  selected?: boolean;
+  onClick?: () => void;
+  // Width/shrink/snap behavior differs by context — a 75-80vw snap-carousel item in
+  // MainFeedPage vs. a full-width row in PetResultsList's drawer — so the card itself stays
+  // unopinionated about it and just merges whatever the caller passes in.
+  className?: string;
+  // Defaults to the portrait Airbnb-style ratio used everywhere else. PetResultsList.tsx
+  // overrides this to a landscape ratio for BottomSheet.tsx's 'half' snap, which only ever
+  // shows a single full card in the visible half-screen budget — the tall portrait ratio there
+  // forced the image (and so the whole card) to over-extend past that budget.
+  imageAspectClassName?: string;
 }
 
-export function PetCard({ pet }: PetCardProps) {
+const STATUS_LABEL: Record<Pet['status'], string> = {
+  missing: 'ZAGINĄŁ',
+  found: 'WIDZIANY',
+};
+
+// Same red/orange coding as the map pill markers (LeafletMap.tsx's TONE_ACCENT) — kept in sync
+// so a card in the drawer reads as the same status as its pin on the map.
+const STATUS_BADGE_TEXT: Record<Pet['status'], string> = {
+  missing: 'text-red-600',
+  found: 'text-orange-500',
+};
+
+const STATUS_VERB: Record<Pet['status'], string> = {
+  missing: 'Zaginął',
+  found: 'Widziany',
+};
+
+// No photo field exists on PetResponseDTO yet — a neutral, minimal initial block stands in for
+// a real photo, deliberately uncolored by status (the premium spec keeps the image surface
+// quiet/monochrome and puts all status signal in the ZAGINĄŁ/WIDZIANY badge instead) rather than
+// pointing <img> at a URL that doesn't exist.
+function PetImage({ pet }: { pet: Pet }) {
   return (
-    <article className="pet-card">
-      <h3>{pet.name}</h3>
-      <p>{pet.species}</p>
-      <span data-status={pet.status}>{pet.status === 'missing' ? 'Missing' : 'Found'}</span>
-      {pet.reward > 0 && <p>Reward: {pet.reward}</p>}
-    </article>
+    <div
+      className="flex size-full items-center justify-center bg-neutral-100 text-6xl font-bold text-neutral-300"
+      aria-hidden="true"
+    >
+      {pet.name.charAt(0).toUpperCase()}
+    </div>
+  );
+}
+
+function HeartIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth={filled ? 0 : 2}
+      className={cn(
+        'size-[18px] drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]',
+        filled ? 'text-rose-600' : 'text-white',
+      )}
+      aria-hidden="true"
+    >
+      <path
+        d="M12 20.5s-7.5-4.6-10-9.3C.4 7.8 2 4.5 5.4 4a5 5 0 0 1 6.6 2.4A5 5 0 0 1 18.6 4c3.4.5 5 3.8 3.4 7.2-2.5 4.7-10 9.3-10 9.3Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// pet.reward is the one real "trust"-adjacent signal PetResponseDTO actually carries — used here
+// as the right-hand side of the metadata block's third line instead of a fabricated star/review
+// rating (this app has no ratings or reviews feature anywhere, so a "⭐ 4.94" badge would be
+// invented data, not a real trust score).
+function RewardBadge({ reward }: { reward: number }) {
+  if (reward <= 0) return null;
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold text-black">
+      <span aria-hidden="true">💰</span>
+      {reward} zł
+    </span>
+  );
+}
+
+// Reusable atomic card — premium/Airbnb-style vertical layout (image on top, strict 3-line
+// metadata block below), used both as a fixed-width item inside MainFeedPage's snap carousels
+// and as a full-width row inside PetResultsList's drawer.
+export function PetCard({
+  pet,
+  origin,
+  selected = false,
+  onClick,
+  className,
+  imageAspectClassName = 'aspect-[16/9]',
+}: PetCardProps) {
+  const [favorited, setFavorited] = useState(false);
+  const heartControls = useAnimation();
+
+  const distance = formatDistance(distanceMeters(origin, pet.location));
+
+  const handleToggleFavorite = (event: MouseEvent<HTMLButtonElement>) => {
+    // The heart sits inside the card's own clickable area but must not also trigger onClick.
+    event.stopPropagation();
+    setFavorited((prev) => !prev);
+    heartControls.start({ scale: [1, 1.3, 1], transition: { duration: 0.35, ease: 'easeInOut' } });
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    onClick?.();
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      aria-pressed={selected}
+      className={cn('group flex cursor-pointer flex-col gap-2.5 text-left outline-none', className)}
+    >
+      <div
+        className={cn(
+          // `transition-[aspect-ratio]` is what makes the half↔expanded ratio swap (see
+          // imageAspectClassName's own doc comment above) read as a fluid reflow instead of an
+          // instant jump-cut — modern browsers interpolate the `aspect-ratio` CSS property like
+          // any other animatable numeric property, so a plain Tailwind class swap between
+          // renders is enough to get a smooth transition with no JS-driven animation needed.
+          'relative w-full overflow-hidden rounded-3xl transition-[aspect-ratio] duration-300 ease-out',
+          imageAspectClassName,
+          selected && 'ring-2 ring-rose-600 ring-offset-2 ring-offset-white',
+        )}
+      >
+        <PetImage pet={pet} />
+
+        {/* Decorative gallery-position chrome, not a real multi-photo carousel — there's only
+            ever the one placeholder image (see PetImage above), so a single active dot mirrors
+            reality rather than implying more photos exist. */}
+        <div className="absolute inset-x-0 bottom-2.5 flex items-center justify-center" aria-hidden="true">
+          <span className="h-1.5 w-1.5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
+        </div>
+
+        <span
+          className={cn(
+            'absolute left-2.5 top-2.5 rounded-full bg-white px-3 py-1 text-[11px] font-bold tracking-wide shadow-[0_2px_8px_-2px_rgba(0,0,0,0.25)]',
+            STATUS_BADGE_TEXT[pet.status],
+          )}
+        >
+          {STATUS_LABEL[pet.status]}
+        </span>
+
+        <motion.button
+          type="button"
+          onClick={handleToggleFavorite}
+          animate={heartControls}
+          aria-pressed={favorited}
+          aria-label={favorited ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
+          className="absolute right-2.5 top-2.5 flex size-8 items-center justify-center"
+        >
+          <HeartIcon filled={favorited} />
+        </motion.button>
+      </div>
+
+      <div className="flex flex-col gap-0.5 px-0.5">
+        <p className="truncate text-[15px] font-semibold text-black">
+          {pet.name} • {pet.species}
+        </p>
+        <p className="truncate text-[13px] font-medium text-neutral-400">
+          {STATUS_VERB[pet.status]} {formatRelativeTime(pet.createdAt)}
+        </p>
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-[13px] font-semibold text-black">Blisko Ciebie • {distance}</span>
+          <RewardBadge reward={pet.reward} />
+        </div>
+      </div>
+    </div>
   );
 }

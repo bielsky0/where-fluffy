@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { useCreateSighting, useSightings } from '../api/useSightings';
 import { SightingLogList } from './SightingLogList';
 import type { Pet } from '../types/pet.types';
@@ -33,6 +34,9 @@ export function PetDetailPanel({ pet, onBack }: PetDetailPanelProps) {
       <p>
         {pet.species} — {pet.status === 'missing' ? 'Missing' : 'Found'}
       </p>
+      {/* Only real, discoverable entry point into PetDetailPage's full premium layout — this
+          panel itself stays the quick drawer summary (see MapExplorerPage.tsx's STATE_C). */}
+      <Link to={`/app/pets/${pet.id}`}>Zobacz pełny profil →</Link>
 
       <h3>Sighting log</h3>
       {isLoading && <p>Loading sightings…</p>}

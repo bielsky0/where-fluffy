@@ -18,10 +18,15 @@ const LoginPage = asyncComponent(() => import('@/modules/auth/pages/LoginPage'),
 // out of the chat chunk too.
 const AppShell = asyncComponent(() => import('@/modules/app/pages/AppShell'), <p>Loading…</p>);
 const ChatPage = asyncComponent(() => import('@/modules/chat/pages/ChatPage'), <p>Loading…</p>);
+const PetDetailPage = asyncComponent(
+  () => import('@/modules/pets/pages/PetDetailPage'),
+  <p>Loading…</p>,
+);
 
 export const router = createBrowserRouter([
   { path: '/', element: <LandingPage /> },
   { path: '/login', element: <LoginPage /> },
   { path: '/app', element: <AppShell /> },
   { path: '/app/chat', element: <ChatPage /> },
+  { path: '/app/pets/:petId', element: <PetDetailPage /> },
 ]);

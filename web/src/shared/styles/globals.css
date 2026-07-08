@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * "Friendly & Accessible" tokens — warm hues, but kept dark/saturated enough at rest to clear
+ * WCAG AA against their paired foreground (this app is used outdoors, often in direct sun, so
+ * low-contrast pastel-on-pastel is off the table even though the palette reads as "warm").
+ * Consumed via tailwind.config.ts's `hsl(var(--x) / <alpha-value>)` colors — never hardcode a
+ * hex value in a component, add/adjust a token here instead so light/dark stay in sync.
+ */
+@layer base {
+  :root {
+    --background: 40 33% 98%;
+    --foreground: 20 14% 12%;
+
+    --card: 40 33% 100%;
+    --card-foreground: 20 14% 12%;
+    --popover: 40 33% 100%;
+    --popover-foreground: 20 14% 12%;
+
+    /* Warm "golden retriever" orange — the brand color. */
+    --primary: 21 85% 42%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 35 40% 94%;
+    --secondary-foreground: 20 14% 15%;
+
+    --muted: 35 20% 95%;
+    --muted-foreground: 20 8% 40%;
+
+    --accent: 35 60% 90%;
+    --accent-foreground: 20 14% 15%;
+
+    --destructive: 4 78% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* "Found" status — kept visually distinct from --destructive's "missing" red at a glance. */
+    --success: 142 55% 32%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 30 15% 85%;
+    --input: 30 15% 85%;
+    --ring: 21 85% 42%;
+
+    /* Friendly baseline: soft, generous rounding. Every radius in tailwind.config.ts derives
+       from this one variable. */
+    --radius: 1rem;
+  }
+
+  .dark {
+    --background: 20 14% 8%;
+    --foreground: 40 20% 96%;
+
+    --card: 20 14% 11%;
+    --card-foreground: 40 20% 96%;
+    --popover: 20 14% 11%;
+    --popover-foreground: 40 20% 96%;
+
+    --primary: 24 90% 58%;
+    --primary-foreground: 20 14% 8%;
+
+    --secondary: 20 10% 18%;
+    --secondary-foreground: 40 20% 92%;
+
+    --muted: 20 10% 16%;
+    --muted-foreground: 30 10% 65%;
+
+    --accent: 20 15% 20%;
+    --accent-foreground: 40 20% 92%;
+
+    --destructive: 4 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 45% 45%;
+    --success-foreground: 20 14% 8%;
+
+    --border: 20 10% 20%;
+    --input: 20 10% 20%;
+    --ring: 24 90% 58%;
+
+    --radius: 1rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}

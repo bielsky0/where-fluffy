@@ -7,7 +7,10 @@
     "test": "jest",
     "test:unit": "jest --testPathIgnorePatterns=\"/node_modules/|\\.integration\\.spec\\.ts$\"",
     "test:integration": "jest --testPathPattern=\"\\.integration\\.spec\\.ts$\"",
-    "dev": "tsx watch main.ts"
+    "dev": "tsx watch main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "test:observability": "tsx ../tests/observability/smoke-test.ts"
   },
   "keywords": [],
   "author": "",
@@ -16,11 +19,14 @@
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/auto-instrumentations-node": "^0.78.0",
+    "@opentelemetry/exporter-metrics-otlp-grpc": "^0.220.0",
     "@opentelemetry/exporter-trace-otlp-grpc": "^0.220.0",
     "@opentelemetry/resources": "^2.9.0",
+    "@opentelemetry/sdk-metrics": "^2.9.0",
     "@opentelemetry/sdk-node": "^0.220.0",
     "@opentelemetry/semantic-conventions": "^1.42.0",
     "@prisma/client": "^6.19.3",
+    "@prisma/instrumentation": "^6.19.3",
     "@socket.io/redis-adapter": "^8.3.0",
     "bcrypt": "^6.0.0",
     "cookie": "^2.0.1",
@@ -39,6 +45,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@opentelemetry/context-async-hooks": "^2.9.0",
+    "@opentelemetry/sdk-trace-base": "^2.9.0",
     "@testcontainers/postgresql": "^12.0.4",
     "@types/bcrypt": "^6.0.0",
     "@types/cookie": "^0.6.0",

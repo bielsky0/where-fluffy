@@ -6,11 +6,15 @@ import apiRouter from './app.routes.js'; // <-- Import agregatora
 import { errorHandler } from './shared/middleware/error.middleware.js';
 import { createRateLimiterMiddleware } from './shared/rate-limit/rate-limiter.middleware.js';
 import { redisClient } from './shared/infrastructure/redis.js';
+import { logger } from './shared/infrastructure/logger.js';
 
 export const createApp = () => {
   const app = express();
 
-  app.use(pinoHttp());
+  // Reuses the same `logger` instance every service/gateway imports directly (see
+  // chat.service.ts) — its trace_id/span_id mixin then applies uniformly to both request logs
+  // and manual application logs, not just one or the other.
+  app.use(pinoHttp({ logger }));
 
   // Konfiguracja CORS z obsługą ciasteczek (ważne dla JWT w cookies!)
   app.use(cors({

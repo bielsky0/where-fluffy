@@ -1,6 +1,7 @@
 import { ChatListResponseDTO } from './dto/chat-list-response.dto.js';
 import { MessageResponseDTO } from './dto/message-response.dto.js';
 import { ChatPresenceStore, ChatRepository, ChatRoomWithRelations, MessageWithSender } from './interface/chat.interface.js';
+import { logger } from '../../shared/infrastructure/logger.js';
 
 /**
  * Prywatny mapper przekształcający surowy pokój z bazy danych na DTO listy czatów.
@@ -103,6 +104,11 @@ export const createChatService = (repository: ChatRepository, presenceStore: Cha
     // ✅ KLUCZOWY MOMENT: sprawdzamy dostęp w REDIS, nie w SQL!
     const hasAccess = await presenceStore.checkUserAccess(userId, chatRoomId);
     if (!hasAccess) {
+      // `logger` needs no trace id passed in — its mixin() (logger.ts) reads whichever span
+      // is active on this call stack (the WS event's span, thanks to auto-instrumentation)
+      // and stamps trace_id/span_id on this line automatically, so it shows up correlated
+      // next to the matching trace/request in Grafana without any extra plumbing here.
+      logger.warn({ userId, chatRoomId }, 'Odrzucono próbę wysłania wiadomości bez dostępu do pokoju');
       throw new Error('FORBIDDEN');
     }
 

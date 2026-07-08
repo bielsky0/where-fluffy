@@ -22,7 +22,7 @@ export function useLogin() {
 }
 
 // POST /auth/register — does not log the user in (no cookie is set), so registering alone
-// doesn't populate the session store; see AuthModal.tsx, which chains a login call after a
+// doesn't populate the session store; see AuthBottomSheet.tsx, which chains a login call after a
 // successful register to actually establish a session.
 export function useRegister() {
   return useMutation({

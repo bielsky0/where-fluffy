@@ -15,7 +15,7 @@ interface AuthUiState {
   consumeAttemptedAction: () => AttemptedAction | null;
 }
 
-// UI-only state for the deferred-auth flow: whether AuthModal is showing, and which gated
+// UI-only state for the deferred-auth flow: whether AuthBottomSheet is showing, and which gated
 // action (if any) triggered it, so the caller can resume that exact action once login
 // succeeds. Never touches the network or holds the actual user — that's useSessionStore's job.
 export const useAuthStore = create<AuthUiState>((set, get) => ({

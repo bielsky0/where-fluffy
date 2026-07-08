@@ -2,11 +2,12 @@ import { usePetMapStore } from '@/modules/pets/store/usePetMapStore';
 import { AddReportModal } from '@/modules/pets/components/AddReportModal';
 import { MapExplorerPage } from '@/modules/pets/pages/MapExplorerPage';
 import ProfilePage from '@/modules/profile/pages/ProfilePage';
-import { AuthModal } from '@/modules/auth/components/AuthModal';
+import { AuthBottomSheet } from '@/modules/auth/components/AuthBottomSheet';
 import { useAuthStore, type AttemptedAction } from '@/modules/auth/store/useAuthStore';
 import { useSessionStore } from '@/modules/auth/store/useSessionStore';
 import { useAppUIStore } from '@/modules/app/store/useAppUIStore';
 import { BottomNav, type NavAction } from '@/modules/app/components/BottomNav';
+import { GuestTabBar, type GuestNavAction } from '@/modules/app/components/GuestTabBar';
 import { MainFeedPage } from './MainFeedPage';
 
 type ActionId = NavAction;
@@ -23,11 +24,14 @@ type ActionId = NavAction;
 // business, not this component's.
 //
 // What *does* still belong here, because it's genuinely global rather than page-specific:
-//   - BottomNav — same three destinations regardless of which page is mounted.
+//   - BottomNav (session exists) / GuestTabBar (no session) — same bottom-of-viewport chrome
+//     slot, swapped on `currentUser` rather than ever rendering both; see runGuestAction for
+//     why GuestTabBar's three destinations don't map 1:1 onto BottomNav's.
 //   - AddReportModal — a modal overlay, not tied to either page's own layout; only ever open
-//     as a result of a session-gated BottomNav tap (see runGatedAction), so "gated by auth" is
-//     enforced at the point it's opened, not by conditionally mounting the modal itself.
-//   - AuthModal — the same login gate every gated action shares.
+//     as a result of a session-gated tab (BottomNav's "Zgłoś" via runGatedAction, or
+//     GuestTabBar's "Dodaj" via runGuestAction), so "gated by auth" is enforced at the point
+//     it's opened, not by conditionally mounting the modal itself.
+//   - AuthBottomSheet — the same login gate every gated action (from either bar) shares.
 //
 // Note on file layout: MainFeedPage stays under modules/app/pages/ rather than moving into
 // modules/landing/ — that module is the public, pre-login marketing page (routes.tsx keeps its
@@ -92,12 +96,27 @@ export default function AppShell() {
     runAction(action);
   };
 
+  // GuestTabBar's own action set (see that file) — 'discover' is the one tab that needs no
+  // session at all (same intent as BottomNav's 'list'), so it runs directly; 'add' and 'login'
+  // both exist only to reach a session, so both simply request one, differing only in which
+  // action (if any) resumes once AuthBottomSheet succeeds — 'add' resumes into AddReportModal
+  // the same way BottomNav's gated 'report' tab would, 'login' has nothing to resume into
+  // beyond landing on the feed, which is what runAction('list') already does.
+  const runGuestAction = (action: GuestNavAction) => {
+    if (action === 'discover') {
+      runAction('list');
+      return;
+    }
+    requestAuth({ id: action === 'add' ? 'report' : 'list' });
+  };
+
   const handleAuthenticated = (attemptedAction: AttemptedAction | null) => {
     if (attemptedAction) runAction(attemptedAction.id as ActionId);
   };
 
   const activeAction: NavAction | undefined =
     activeView === 'feed' ? 'list' : activeView === 'profile' ? 'profile' : undefined;
+  const activeGuestAction: GuestNavAction | undefined = activeView === 'feed' ? 'discover' : undefined;
 
   return (
     <div className="relative h-dvh overflow-hidden">
@@ -105,10 +124,14 @@ export default function AppShell() {
       {activeView === 'map' && <MapExplorerPage />}
       {activeView === 'profile' && <ProfilePage />}
 
-      <BottomNav onAction={runGatedAction} activeAction={activeAction} hidden={isBottomNavHidden} />
+      {currentUser ? (
+        <BottomNav onAction={runGatedAction} activeAction={activeAction} hidden={isBottomNavHidden} />
+      ) : (
+        <GuestTabBar onAction={runGuestAction} activeAction={activeGuestAction} hidden={isBottomNavHidden} />
+      )}
 
       {isAddReportOpen && <AddReportModal onClose={closeAddReport} />}
-      <AuthModal onAuthenticated={handleAuthenticated} />
+      <AuthBottomSheet onAuthenticated={handleAuthenticated} />
     </div>
   );
 }

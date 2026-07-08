@@ -87,7 +87,7 @@ function CardCarousel({
 
 // The main "Airbnb style" landing view — a clean vertical feed, no map anywhere in it. Fully
 // self-sufficient (own data fetching, own store wiring, zero props) — same pattern already
-// used by SearchModal.tsx/AuthModal.tsx elsewhere in this app, so AppShell.tsx can mount it
+// used by SearchModal.tsx/AuthBottomSheet.tsx elsewhere in this app, so AppShell.tsx can mount it
 // with no prop drilling. Its usePets query is entirely independent of MapExplorerPage's (see
 // geo.ts) — browsing the feed never triggers, and never depends on, anything the map/search
 // wizard has done, and vice versa; only one of the two pages is ever mounted at a time (see

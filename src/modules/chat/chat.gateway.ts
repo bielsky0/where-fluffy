@@ -8,9 +8,13 @@ export const createChatGateway = (io: ChatIoServer, chatService: ChatService, ra
     const userId = socket.data.userId;
     if (!userId) return socket.disconnect();
 
-    await chatService.markUserOnline(userId, socket.id);
-    console.log(`[WS] Połączono: ${userId}`);
-
+    // Rejestrujemy WSZYSTKIE listenery synchronicznie, zanim jakikolwiek await odda kontrolę do
+    // event loopa. Wcześniej `await chatService.markUserOnline(...)` (rundtrip do Redis) szedł
+    // pierwszy — klient, który emituje zdarzenie natychmiast po połączeniu (normalne zachowanie
+    // szybkiego klienta, nie tylko testów obciążeniowych), potrafił wygrać ten wyścig: socket.io
+    // dispatchował pakiet zanim `socket.on('join_chat', ...)` w ogóle istniał, a `EventEmitter`
+    // bez zarejestrowanego listenera po prostu cicho gubi zdarzenie — bez błędu, bez loga.
+    //
     // Limit częstotliwości zdarzeń (join_chat/send_message/...) per userId — patrz
     // shared/rate-limit/rate-limiter.socket.ts. socket.use() NIE rozłącza automatycznie przy
     // next(err) (inaczej niż io.use() w shared/infrastructure/socket.ts), więc obsługujemy to
@@ -59,5 +63,8 @@ export const createChatGateway = (io: ChatIoServer, chatService: ChatService, ra
     });
 
     socket.on('disconnect', () => chatService.markUserOffline(userId));
+
+    await chatService.markUserOnline(userId, socket.id);
+    console.log(`[WS] Połączono: ${userId}`);
   });
 };

@@ -5,6 +5,7 @@ import { validate } from '../../shared/middleware/validate.js';
 import { commentsController } from '../comments/index.js';
 import { petsController } from './index.js';
 import { createPetSchema } from './pets.schema.js';
+import { createCommentSchema } from '../comments/comments.schema.js';
 
 const router = Router();
 
@@ -18,6 +19,6 @@ router.post('/', authenticate, validate(createPetSchema), asyncHandler(petsContr
 router.get('/:petId/comments', asyncHandler(commentsController.listForPet));
 
 // PRYWATNE: Tylko zalogowany może dodać nowy punkt widzenia / komentarz
-router.post('/:petId/comments', authenticate, asyncHandler(petsController.create));
+router.post('/:petId/comments', authenticate, validate(createCommentSchema), asyncHandler(commentsController.create));
 
 export default router;

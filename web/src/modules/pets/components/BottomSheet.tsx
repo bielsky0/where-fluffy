@@ -4,6 +4,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
   type UIEvent as ReactUIEvent,
 } from 'react';
 import { motion, useAnimation, useDragControls, type PanInfo } from 'framer-motion';
@@ -43,6 +44,13 @@ interface BottomSheetProps {
   // than sitting at 'collapsed' and leaving its header strip visible behind the floating card.
   // Drag is disabled while hidden — there's nothing to grab, the sheet isn't on screen.
   hidden?: boolean;
+  // Points at the content div below (attached via `ref={contentRef}` where the div is rendered)
+  // — that div is this sheet's *real* scroll container (handleContentScroll/handleContentPointerMove
+  // below already read its scrollTop directly off the event, for the overscroll drag-handoff
+  // gesture), so PetResultsList.tsx's virtualizer must window against this same element rather
+  // than owning a second nested `overflow-y-auto` div, which would silently break that handoff
+  // (the outer element's scrollTop would stay 0 forever while the inner one actually scrolls).
+  contentRef?: RefObject<HTMLDivElement>;
 }
 
 function formatResultCount(count: number): string {
@@ -63,6 +71,7 @@ export function BottomSheet({
   children,
   bottomOffset = 0,
   hidden = false,
+  contentRef,
 }: BottomSheetProps) {
   const controls = useAnimation();
   const dragControls = useDragControls();
@@ -244,6 +253,7 @@ export function BottomSheet({
           `dragControls`-driven sheet drag the handle and half/collapsed states use, dropping
           the sheet to 'half' instead of rigidly refusing to move further. */}
       <div
+        ref={contentRef}
         onPointerDown={snap !== 'expanded' ? startDrag : handleContentPointerDown}
         onPointerMove={snap === 'expanded' ? handleContentPointerMove : undefined}
         onPointerUp={snap === 'expanded' ? handleContentGestureEnd : undefined}

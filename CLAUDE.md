@@ -8,9 +8,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 location, other users leave location-tagged comments/sightings, and an owner/finder pair can
 open a real-time chat once a sighting is confirmed.
 
-The entire implementation lives under `src/` (its own `package.json`, node_modules, tsconfig).
-The repo-root directories `web/`, `tests/`, `shared-types/`, `infra/`, and `src/modules/sightings/`
-and `src/common/` are empty placeholders for future work — don't assume code exists there.
+The backend lives under `src/` (its own `package.json`, node_modules, tsconfig); the frontend
+(React + Vite + Leaflet + TanStack Query) lives under `web/`, with its own independent
+`package.json`/node_modules — the two aren't wired together by a monorepo tool, they're sibling
+directories. `tests/` (observability smoke tests, k6 load tests) and `infra/` (Alloy/Grafana/
+Tempo/Prometheus observability config) also have real content. Only `shared-types/` and
+`src/modules/sightings/`/`src/common/` are still empty placeholders for future work — don't
+assume code exists there.
 
 ## Commands
 
@@ -125,6 +129,28 @@ translates a duplicate-email unique-constraint violation (Prisma code `P2002`) i
 own proactive `findByEmail` check. `comments.service.ts` reuses `PetRepository` (injected as a
 second constructor argument, imported from `pets/index.ts`'s exported `petsRepository` at the
 composition root — not Prisma directly) to check pet existence before creating a comment.
+
+**Map explorer is a dual-query architecture, not one endpoint feeding both a map and a list**:
+`src/modules/map/` (new top-level module, `GET /api/v1/map/pins`) returns a deliberately minimal
+flat array (`{id, lat, lng, status}`, no pagination, capped at a hardcoded `PINS_LIMIT`) filtered
+by a `bbox=minLng,minLat,maxLng,maxLat` query param — this feeds `web/`'s Leaflet map/marker
+clustering only. `GET /pets/feed` (existing `feed` module) additionally accepts that same `bbox`
+as an *alternative* to its original `lat`/`lng`/`radius` proximity mode (mutually exclusive,
+enforced by `feedQuerySchema`'s `.refine()` — existing proximity-mode callers are untouched) and
+feeds the map explorer's paginated results drawer with the full DTO instead. Both query schemas
+share one `bboxSchema` fragment (`src/shared/schemas/bbox.schema.ts`) for parsing/range-checking.
+In bbox mode, `feed.repository.ts` filters via `location && ST_MakeEnvelope(...)::geography`
+(GiST-indexed bbox overlap) instead of `ST_DWithin`, and `distanceMeters` comes back `null` (a
+bbox has no single reference point for `ST_Distance` to measure from) — `FeedPetResponseDTO`'s
+`distanceMeters` is `number | null` for this reason. On the frontend, `web/src/modules/map/api/useMapPins.ts`
+and `web/src/modules/feed/api/useFeedInfiniteBbox.ts` are separate TanStack Query hooks (not one
+hook feeding both `MapView` and `PetResultsList`) — `MapExplorerPage.tsx` derives a debounced
+(350ms, see `useDebouncedCallback`), rounded (`roundBbox`, ~5 decimal places) bbox from Leaflet's
+`moveend` event and keys both hooks' `queryKey`s on it. `PetResultsList.tsx`'s
+`@tanstack/react-virtual` windowing targets `BottomSheet.tsx`'s own content div (via a shared
+`contentRef`), not a nested scroll container of its own — that div already owns custom
+scroll-position-driven drag/overscroll-handoff logic (`handleContentScroll`), so a second nested
+`overflow-y-auto` div would silently break it (the outer element's `scrollTop` would never move).
 
 **Chat's gateway is composed outside `chat/index.ts`**: every other module builds its full stack
 (repository → service → controller) eagerly at import time in its own `index.ts`, but

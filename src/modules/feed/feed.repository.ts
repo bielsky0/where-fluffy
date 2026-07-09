@@ -9,7 +9,15 @@ export const createFeedRepository = (prisma: PrismaClient): FeedRepository => {
   // Pet_location_idx GiST index) does the proximity filtering, and ST_Distance is only a
   // SELECT-ed column for the DTO's distanceMeters field. Deliberately does not filter
   // status = 'missing' — this section shows both missing/found pets with a status badge.
-  const findFeedPage: FeedRepository['findFeedPage'] = async ({ lat, lng, radiusInMeters, category, cursor, limit }) => {
+  const findFeedPage: FeedRepository['findFeedPage'] = async ({
+    lat,
+    lng,
+    radiusInMeters,
+    bbox,
+    category,
+    cursor,
+    limit,
+  }) => {
     const categoryFragment = category ? Prisma.sql`AND category = ${category}` : Prisma.empty;
     // Row-constructor comparison matches the ORDER BY "createdAt" DESC, id DESC tie-break
     // exactly: any row strictly "after" the cursor in that ordering satisfies this predicate.
@@ -17,12 +25,25 @@ export const createFeedRepository = (prisma: PrismaClient): FeedRepository => {
       ? Prisma.sql`AND ("createdAt", id) < (${new Date(cursor.createdAt)}, ${cursor.id})`
       : Prisma.empty;
 
+    // Proximity mode (ST_DWithin, GiST-indexed) vs. map-viewport mode ("&&" bbox overlap, same
+    // index) — feed.schema.ts's .refine() guarantees exactly one of bbox/lat+lng is present.
+    const locationFragment = bbox
+      ? Prisma.sql`location && ST_MakeEnvelope(${bbox.minLng}, ${bbox.minLat}, ${bbox.maxLng}, ${bbox.maxLat}, 4326)::geography`
+      : Prisma.sql`ST_DWithin(location, ST_MakePoint(${lng}, ${lat})::geography, ${radiusInMeters})`;
+
+    // distanceMeters needs a single reference point to measure from — bbox mode has none (it's
+    // viewport browsing, not "nearest first"), so it's NULL rather than measured from an
+    // arbitrary bbox corner/center that would misrepresent "distance from you."
+    const distanceFragment = bbox
+      ? Prisma.sql`NULL as "distanceMeters"`
+      : Prisma.sql`ST_Distance(location, ST_MakePoint(${lng}, ${lat})::geography) as "distanceMeters"`;
+
     const rows = await prisma.$queryRaw<RawFeedPetRow[]>`
       SELECT id, name, species, status, category, reward, "createdAt",
              ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng,
-             ST_Distance(location, ST_MakePoint(${lng}, ${lat})::geography) as "distanceMeters"
+             ${distanceFragment}
       FROM "Pet"
-      WHERE ST_DWithin(location, ST_MakePoint(${lng}, ${lat})::geography, ${radiusInMeters})
+      WHERE ${locationFragment}
       ${categoryFragment}
       ${cursorFragment}
       ORDER BY "createdAt" DESC, id DESC

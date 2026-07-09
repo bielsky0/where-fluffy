@@ -11,7 +11,8 @@ export interface FeedPetResponseDTO {
   status: 'missing' | 'found';
   reward: number;
   location: { lat: number; lng: number };
-  distanceMeters: number;
+  // null in bbox (map-viewport) mode — see feed.repository.ts's distanceFragment.
+  distanceMeters: number | null;
   createdAt: string;
 }
 

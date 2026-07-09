@@ -1,7 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { usePets } from '../api/usePets';
+import { useMapPins } from '@/modules/map/api/useMapPins';
+import { useFeedInfiniteBbox } from '@/modules/feed/api/useFeedInfiniteBbox';
+import { useDebouncedCallback } from '@/shared/hooks/useDebouncedCallback';
+import type { Bbox } from '@/shared/lib/bbox';
+import type { BoundsRect } from '@/shared/components/map/types';
 import { usePetMapStore } from '../store/usePetMapStore';
 import { matchesPetType, PET_TYPE_LABELS_PLURAL } from '../lib/petType';
 import { matchesTimeframe, TIMEFRAME_LABELS } from '../lib/timeframe';
@@ -16,6 +20,25 @@ import { useAppUIStore } from '@/modules/app/store/useAppUIStore';
 import { SearchBar } from '@/modules/app/components/SearchBar';
 import { SearchModal } from '@/modules/app/components/SearchModal';
 import { BOTTOM_NAV_CLEARANCE } from '@/modules/app/components/BottomNav';
+
+// Leaflet's own `moveend` already fires only once per gesture (not per animation frame, see
+// LeafletMap.tsx's BoundsTracker) — this debounce exists on top of that so a *sequence* of rapid
+// gestures (flick-pan, flick-pan, flick-pan) collapses into one bbox-keyed fetch instead of one
+// per gesture (CLAUDE.md's 60fps guide calls for 300-400ms here).
+const BBOX_DEBOUNCE_MS = 350;
+
+// Rough viewport half-extent in degrees, used only until the very first real `moveend` supplies
+// Leaflet's own exact bounds — just enough that the map/drawer aren't empty on initial load.
+const INITIAL_BBOX_DELTA_DEG = 0.05;
+
+function deriveInitialBbox(center: { lat: number; lng: number }): Bbox {
+  return {
+    minLng: center.lng - INITIAL_BBOX_DELTA_DEG,
+    minLat: center.lat - INITIAL_BBOX_DELTA_DEG,
+    maxLng: center.lng + INITIAL_BBOX_DELTA_DEG,
+    maxLat: center.lat + INITIAL_BBOX_DELTA_DEG,
+  };
+}
 
 // Quick-filter pills in ResultsTopBar's sub-header row. Only 'reward' maps to a real field
 // (Pet.reward) — 'large'/'photo' have no backing data (PetResponseDTO has no size or photo
@@ -54,7 +77,29 @@ export function MapExplorerPage() {
   // MainFeedPage's own location (useAppLocation), so browsing the feed never depends on, or pays
   // for, anything the map wizard has done.
   const queryCenter = appliedFilters.location?.coords ?? FALLBACK_ORIGIN;
-  const { data: pets, isLoading, isError } = usePets({ ...queryCenter, radius: 5000 });
+
+  // Dual-query architecture (CLAUDE.md): the map's pins (lightweight, unpaginated, drives
+  // clustering) and the drawer's cards (heavy DTO, cursor-paginated) are two independent
+  // bbox-keyed queries against two different endpoints, not one query feeding both — this is
+  // what lets the drawer scroll/paginate without ever re-fetching or re-rendering the map's pins.
+  const [bbox, setBbox] = useState<Bbox>(() => deriveInitialBbox(queryCenter));
+  const handleBoundsChange = useDebouncedCallback((bounds: BoundsRect) => setBbox(bounds), BBOX_DEBOUNCE_MS);
+
+  const { data: pins = [] } = useMapPins(bbox, appliedFilters.petType);
+  const {
+    data: feedData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    isError,
+  } = useFeedInfiniteBbox(bbox, appliedFilters.petType);
+  const feedPets = useMemo(() => feedData?.pages.flatMap((page) => page.items) ?? [], [feedData]);
+
+  // BottomSheet's own content div is the real scroll/gesture container — PetResultsList's
+  // virtualizer windows against it via this shared ref rather than owning a nested scroll
+  // container (see BottomSheet.tsx's contentRef doc comment).
+  const drawerContentRef = useRef<HTMLDivElement>(null);
 
   const selectedPetId = usePetMapStore((state) => state.selectedPetId);
   const selectPet = usePetMapStore((state) => state.selectPet);
@@ -73,20 +118,22 @@ export function MapExplorerPage() {
       return next;
     });
 
+  // category (appliedFilters.petType) is already applied server-side by both bbox queries above
+  // — this only re-applies filters the backend doesn't support (status/timeframe/reward).
   const filteredPets = useMemo(() => {
-    if (!pets) return [];
-    return pets.filter(
+    return feedPets.filter(
       (pet) =>
         matchesPetType(pet, appliedFilters.petType) &&
         (appliedFilters.status === null || pet.status === appliedFilters.status) &&
         matchesTimeframe(pet, appliedFilters.timeframe) &&
         (!activeQuickPills.has('reward') || pet.reward > 0),
     );
-  }, [pets, appliedFilters.petType, appliedFilters.status, appliedFilters.timeframe, activeQuickPills]);
+  }, [feedPets, appliedFilters.petType, appliedFilters.status, appliedFilters.timeframe, activeQuickPills]);
 
+  // Looked up from whatever's currently loaded in the paginated feed — a pin the drawer hasn't
+  // paginated to yet won't resolve here (no per-pet detail endpoint exists to fall back to), so
+  // a click on such a pin is a silent no-op rather than opening PetDetailPanel with stale/no data.
   const selectedPet = filteredPets.find((pet) => pet.id === selectedPetId) ?? null;
-
-  //TODO infinity scroll list
 
   const resultsHeadline = appliedFilters.petType
     ? `${PET_TYPE_LABELS_PLURAL[appliedFilters.petType]} w okolicy`
@@ -105,7 +152,13 @@ export function MapExplorerPage() {
   return (
     <>
       {/* Layer 1: background */}
-      <MapView pets={filteredPets} center={queryCenter} selectedPetId={selectedPetId} onSelectPet={selectPet} />
+      <MapView
+        pins={pins}
+        center={queryCenter}
+        selectedPetId={selectedPetId}
+        onSelectPet={selectPet}
+        onBoundsChange={handleBoundsChange}
+      />
 
       {currentAppState !== 'STATE_B' && (
         <Link
@@ -159,6 +212,7 @@ export function MapExplorerPage() {
           // edge, leaving the exact gap the nav used to fill but now empty.
           bottomOffset={sheetSnap === 'collapsed' ? 0 : BOTTOM_NAV_CLEARANCE}
           hidden={selectedPet !== null}
+          contentRef={drawerContentRef}
         >
           {isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Ładowanie…</p>}
           {isError && (
@@ -170,6 +224,10 @@ export function MapExplorerPage() {
               origin={queryCenter}
               selectedPetId={selectedPetId}
               imageAspectClassName={sheetSnap === 'half' ? 'aspect-[16/9]' : undefined}
+              scrollContainerRef={drawerContentRef}
+              fetchNextPage={fetchNextPage}
+              hasNextPage={hasNextPage ?? false}
+              isFetchingNextPage={isFetchingNextPage}
             />
           )}
         </BottomSheet>

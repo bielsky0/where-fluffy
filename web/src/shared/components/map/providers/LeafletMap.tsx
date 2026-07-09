@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 import { MapContainer, Marker, TileLayer, useMap, useMapEvent } from 'react-leaflet';
 import { divIcon } from 'leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import type { Coordinate, MapMarkerProps, MapProps } from '../types';
 
 const TONE_ACCENT: Record<MapMarkerProps['tone'], string> = {
@@ -71,6 +74,24 @@ function MoveStartTracker({ onMoveStart }: { onMoveStart: MapProps['onMoveStart'
   return null;
 }
 
+// Reports the map's viewport rectangle once panning/zooming settles, for callers that opted
+// into `onBoundsChange` (see ../types.ts) — same `moveend` event as CenterTracker, kept as its
+// own tracker/component since not every caller needs the full bounds (react-leaflet's
+// useMapEvent has no built-in way to share one subscription across two hook call sites, so this
+// mounts as a sibling <MoveendTracker/>-style component instead, exactly like CenterTracker).
+function BoundsTracker({ onBoundsChange }: { onBoundsChange: MapProps['onBoundsChange'] }) {
+  useMapEvent('moveend', (event) => {
+    const bounds = event.target.getBounds();
+    onBoundsChange?.({
+      minLng: bounds.getWest(),
+      minLat: bounds.getSouth(),
+      maxLng: bounds.getEast(),
+      maxLat: bounds.getNorth(),
+    });
+  });
+  return null;
+}
+
 // react-leaflet implementation of the `<Map />` facade (see ../Map.tsx). This is the only
 // file in the app allowed to import from `react-leaflet`/`leaflet` — everything else goes
 // through the provider-agnostic `MapProps`/`MapMarkerProps` in ../types.ts.
@@ -83,6 +104,7 @@ export function LeafletMap({
   focusCenter,
   onCenterChange,
   onMoveStart,
+  onBoundsChange,
 }: MapProps) {
   return (
     <MapContainer
@@ -90,6 +112,10 @@ export function LeafletMap({
       zoom={zoom}
       className={className}
       style={style ?? { height: '100%', width: '100%' }}
+      // Canvas renderer instead of the default SVG/DOM one — with clustering active this mostly
+      // matters for the un-clustered individual/spiderfied markers at max zoom (see CLAUDE.md's
+      // 60fps guide), which would otherwise still be one DOM node each.
+      preferCanvas
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -98,15 +124,24 @@ export function LeafletMap({
       <FlyToFocus target={focusCenter} />
       {onCenterChange && <CenterTracker onCenterChange={onCenterChange} />}
       {onMoveStart && <MoveStartTracker onMoveStart={onMoveStart} />}
-      {markers.map((marker) => (
-        <Marker
-          key={marker.id}
-          position={[marker.position.lat, marker.position.lng]}
-          icon={createPetMarkerIcon(marker)}
-          opacity={marker.opacity ?? 1}
-          eventHandlers={marker.onClick ? { click: marker.onClick } : undefined}
-        />
-      ))}
+      {onBoundsChange && <BoundsTracker onBoundsChange={onBoundsChange} />}
+      {/* chunkedLoading: true — react-leaflet-cluster/leaflet.markercluster splits marker
+          insertion into requestAnimationFrame-sized batches instead of processing thousands of
+          pins in one blocking pass (see CLAUDE.md's 60fps guide). The group itself is mounted
+          via @react-leaflet/core's createPathComponent, which already adds/removes the
+          underlying L.MarkerClusterGroup from the map on mount/unmount — no extra manual
+          cleanup effect needed here. */}
+      <MarkerClusterGroup chunkedLoading>
+        {markers.map((marker) => (
+          <Marker
+            key={marker.id}
+            position={[marker.position.lat, marker.position.lng]}
+            icon={createPetMarkerIcon(marker)}
+            opacity={marker.opacity ?? 1}
+            eventHandlers={marker.onClick ? { click: marker.onClick } : undefined}
+          />
+        ))}
+      </MarkerClusterGroup>
     </MapContainer>
   );
 }

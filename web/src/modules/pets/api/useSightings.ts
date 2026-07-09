@@ -32,8 +32,8 @@ function mapCommentToSighting(petId: string, comment: CommentResponseDTO): Sight
 export function useSightings(petId: string | undefined) {
   return useQuery({
     queryKey: ['pets', petId, 'sightings'],
-    queryFn: async () => {
-      const comments = await apiFetch<CommentResponseDTO[]>(`/pets/${petId}/comments`);
+    queryFn: async ({ signal }) => {
+      const comments = await apiFetch<CommentResponseDTO[]>(`/pets/${petId}/comments`, { signal });
       return comments.map((comment) => mapCommentToSighting(petId!, comment));
     },
     enabled: Boolean(petId),

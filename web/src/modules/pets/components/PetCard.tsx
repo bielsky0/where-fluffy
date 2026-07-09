@@ -1,8 +1,9 @@
-import { useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { memo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { motion, useAnimation } from 'framer-motion';
 import type { Coordinate } from '@/shared/components/map/types';
 import { cn } from '@/shared/lib/cn';
 import { distanceMeters, formatDistance, formatRelativeTime } from '../lib/format';
+import { PET_STATUS_LABEL } from '../lib/petStatus';
 import type { Pet } from '../types/pet.types';
 
 interface PetCardProps {
@@ -20,11 +21,6 @@ interface PetCardProps {
   // forced the image (and so the whole card) to over-extend past that budget.
   imageAspectClassName?: string;
 }
-
-const STATUS_LABEL: Record<Pet['status'], string> = {
-  missing: 'ZAGINĄŁ',
-  found: 'WIDZIANY',
-};
 
 // Same red/orange coding as the map pill markers (LeafletMap.tsx's TONE_ACCENT) — kept in sync
 // so a card in the drawer reads as the same status as its pin on the map.
@@ -91,8 +87,10 @@ function RewardBadge({ reward }: { reward: number }) {
 
 // Reusable atomic card — premium/Airbnb-style vertical layout (image on top, strict 3-line
 // metadata block below), used both as a fixed-width item inside MainFeedPage's snap carousels
-// and as a full-width row inside PetResultsList's drawer.
-export function PetCard({
+// and as a full-width row inside PetResultsList's drawer. Wrapped in memo() (see the named
+// export below) since both parents re-render frequently (scroll position, drawer snap, filter
+// toggles) for reasons unrelated to any single card's own props.
+function PetCardComponent({
   pet,
   origin,
   selected = false,
@@ -154,7 +152,7 @@ export function PetCard({
             STATUS_BADGE_TEXT[pet.status],
           )}
         >
-          {STATUS_LABEL[pet.status]}
+          {PET_STATUS_LABEL[pet.status]}
         </span>
 
         <motion.button
@@ -184,3 +182,5 @@ export function PetCard({
     </div>
   );
 }
+
+export const PetCard = memo(PetCardComponent);

@@ -15,7 +15,7 @@ function buildNearbyQueryString({ lat, lng, radius }: NearbyPetsQuery): string {
 export function usePets(query: NearbyPetsQuery) {
   return useQuery({
     queryKey: ['pets', 'nearby', query],
-    queryFn: () => apiFetch<Pet[]>(`/pets/nearby?${buildNearbyQueryString(query)}`),
+    queryFn: ({ signal }) => apiFetch<Pet[]>(`/pets/nearby?${buildNearbyQueryString(query)}`, { signal }),
   });
 }
 
@@ -33,7 +33,13 @@ export function useCreatePetReport() {
         body: JSON.stringify(payload),
       }),
     onSuccess: () => {
+      // Also invalidates the map explorer's bbox-keyed queries (useMapPins/useFeedInfiniteBbox)
+      // — MapExplorerPage.tsx no longer reads from ['pets','nearby'], so invalidating only that
+      // key would leave a newly created report invisible on the map/drawer until those queries'
+      // own staleness naturally expires.
       queryClient.invalidateQueries({ queryKey: ['pets', 'nearby'] });
+      queryClient.invalidateQueries({ queryKey: ['map', 'pins'] });
+      queryClient.invalidateQueries({ queryKey: ['pets', 'feed'] });
     },
   });
 }

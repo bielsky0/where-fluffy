@@ -18,11 +18,16 @@ export const createFeedController = (feedService: FeedService): FeedController =
   };
 
   const list = async (req: Request, res: Response): Promise<void> => {
-    const { lat, lng, radius, category, cursor, limit } = (req as ValidatedQueryRequest<FeedQuery>).validatedQuery;
+    const { lat, lng, radius, bbox, category, cursor, limit } = (req as ValidatedQueryRequest<FeedQuery>)
+      .validatedQuery;
     const page = await feedService.getFeedPage({
       lat,
       lng,
-      radiusInMeters: radius ?? 5000,
+      // radius defaults only apply in proximity mode — feed.schema.ts's .refine() guarantees
+      // bbox and lat/lng are mutually exclusive, so a default here would be meaningless when
+      // bbox is present.
+      radiusInMeters: bbox ? undefined : radius ?? 5000,
+      bbox,
       category,
       cursor: cursor ?? null,
       limit: limit ?? 20,

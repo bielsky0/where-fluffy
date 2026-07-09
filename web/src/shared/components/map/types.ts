@@ -5,6 +5,16 @@ export interface Coordinate {
   lng: number;
 }
 
+// Viewport rectangle in [lng, lat] order, matching the backend's bbox=minLng,minLat,maxLng,maxLat
+// query param shape (src/shared/schemas/bbox.schema.ts) — kept here rather than importing from
+// shared/lib/bbox.ts so this map abstraction stays free of any app-specific import.
+export interface BoundsRect {
+  minLng: number;
+  minLat: number;
+  maxLng: number;
+  maxLat: number;
+}
+
 // Tone drives the marker pill's accent color — kept as a generic semantic name (not
 // "missing"/"found") so the map abstraction stays domain-agnostic; callers map their own
 // status enum onto one of these two.
@@ -49,4 +59,9 @@ export interface MapProps {
   // dragging and settles it back down on `onCenterChange`'s `moveend`. Left undefined by any
   // caller that doesn't need it.
   onMoveStart?: () => void;
+  // Opt-in "drag/zoom map, read the viewport rectangle it settled on" hook — also `moveend`
+  // (fires alongside onCenterChange when both are given), for callers that need the whole
+  // viewport rather than just its center (the map explorer's dual-query bbox fetch). Separate
+  // prop rather than folding into onCenterChange since most callers only need one or the other.
+  onBoundsChange?: (bounds: BoundsRect) => void;
 }

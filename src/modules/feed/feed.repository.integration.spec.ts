@@ -161,5 +161,56 @@ describe('createFeedRepository (integration)', () => {
       expect(typeof items[0].distanceMeters).toBe('number');
       expect(items[0].distanceMeters).toBeGreaterThan(0);
     });
+
+    // Map-viewport (bbox) mode — mutually exclusive with the radius mode exercised above.
+    describe('bbox mode', () => {
+      // Envelope roughly ~1km around CENTER on each side.
+      const BBOX = { minLng: 21.0, minLat: 52.22, maxLng: 21.03, maxLat: 52.24 };
+
+      it('includes pets inside the envelope and excludes pets outside it', async () => {
+        const insideId = await insertPet({ location: NEAR });
+        await insertPet({ location: FAR });
+
+        const { items } = await repository.findFeedPage({ bbox: BBOX, limit: 20 });
+
+        expect(items.map((p) => p.id)).toEqual([insideId]);
+      });
+
+      it('reports distanceMeters as null in bbox mode', async () => {
+        await insertPet({ location: NEAR });
+
+        const { items } = await repository.findFeedPage({ bbox: BBOX, limit: 20 });
+
+        expect(items[0].distanceMeters).toBeNull();
+      });
+
+      it('combines correctly with cursor pagination', async () => {
+        const firstId = await insertPet({ name: 'First', location: NEAR });
+        await sleep(5);
+        const secondId = await insertPet({ name: 'Second', location: NEAR });
+
+        const page1 = await repository.findFeedPage({ bbox: BBOX, limit: 1 });
+        expect(page1.items.map((p) => p.id)).toEqual([secondId]);
+        expect(page1.hasNextPage).toBe(true);
+
+        const lastItemOfPage1 = page1.items[page1.items.length - 1];
+        const page2 = await repository.findFeedPage({
+          bbox: BBOX,
+          limit: 1,
+          cursor: { createdAt: lastItemOfPage1.createdAt.toISOString(), id: lastItemOfPage1.id },
+        });
+        expect(page2.items.map((p) => p.id)).toEqual([firstId]);
+        expect(page2.hasNextPage).toBe(false);
+      });
+
+      it('filters by category in bbox mode', async () => {
+        const dogId = await insertPet({ category: 'dog', location: NEAR });
+        await insertPet({ category: 'cat', location: NEAR });
+
+        const { items } = await repository.findFeedPage({ bbox: BBOX, category: 'dog', limit: 20 });
+
+        expect(items.map((p) => p.id)).toEqual([dogId]);
+      });
+    });
   });
 });

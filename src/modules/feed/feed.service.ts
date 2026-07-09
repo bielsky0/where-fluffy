@@ -2,7 +2,7 @@ import { PetRepository } from '../pets/interfaces/pets.interface.js';
 import { mapToResponseDTO } from '../pets/pets.mapper.js';
 import { PetResponseDTO } from '../pets/dto/pet-response.dto.js';
 import { PetCategory } from '../pets/pets.category.js';
-import { FeedRepository } from './interfaces/feed.interface.js';
+import { FeedBbox, FeedRepository } from './interfaces/feed.interface.js';
 import { decodeFeedCursor, encodeFeedCursor } from './feed.cursor.js';
 import { mapFeedToResponseDTO } from './feed.mapper.js';
 import { FeedPageResponseDTO } from './dto/feed-pet-response.dto.js';
@@ -17,9 +17,10 @@ export type FeedService = {
     category?: PetCategory;
   }) => Promise<PetResponseDTO[]>;
   getFeedPage: (params: {
-    lat: number;
-    lng: number;
-    radiusInMeters: number;
+    lat?: number;
+    lng?: number;
+    radiusInMeters?: number;
+    bbox?: FeedBbox;
     category?: PetCategory;
     cursor?: string | null;
     limit: number;
@@ -35,12 +36,21 @@ export const createFeedService = (feedRepository: FeedRepository, petRepository:
     return pets.map(mapToResponseDTO);
   };
 
-  const getFeedPage: FeedService['getFeedPage'] = async ({ lat, lng, radiusInMeters, category, cursor, limit }) => {
+  const getFeedPage: FeedService['getFeedPage'] = async ({
+    lat,
+    lng,
+    radiusInMeters,
+    bbox,
+    category,
+    cursor,
+    limit,
+  }) => {
     const decodedCursor = decodeFeedCursor(cursor);
     const { items, hasNextPage } = await feedRepository.findFeedPage({
       lat,
       lng,
       radiusInMeters,
+      bbox,
       category,
       cursor: decodedCursor,
       limit,

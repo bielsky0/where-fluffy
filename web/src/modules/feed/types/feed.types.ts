@@ -5,7 +5,8 @@ import type { PetTypeFilter } from '@/modules/pets/lib/petType';
 // present) so <PetCard/> keeps working unmodified — distanceMeters is the only extra field it
 // ignores.
 export interface FeedPet extends Pet {
-  distanceMeters: number;
+  // null in bbox (map-viewport) mode — see src/modules/feed/feed.repository.ts's distanceFragment.
+  distanceMeters: number | null;
 }
 
 export interface FeedPage {

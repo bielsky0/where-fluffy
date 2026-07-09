@@ -67,26 +67,23 @@ describe('createPetRepository (integration)', () => {
   const buildCreateDto = (overrides: Partial<CreatePetRecordDTO> = {}): CreatePetRecordDTO => ({
     name: 'Rex',
     species: 'dog',
+    status: 'missing',
     category: 'dog',
     location: CENTER,
     reward: 100,
+    phone: '600100200',
     ownerId: owner.id,
     ...overrides,
   });
 
-  // save() zawsze wymusza status 'missing' — do zasiania rekordu 'found' (potrzebnego przy
-  // testowaniu filtra statusu w findNearLocation) trzeba obejść repozytorium i wstawić wiersz
-  // bezpośrednio.
+  // Zgłoszenia "found" idą teraz przez to samo repository.save (status pochodzi z DTO, nie jest
+  // już hardkodowany) — patrz buildCreateDto({ status: 'found' }) w testach poniżej.
   const insertFoundPetDirectly = async (location: { lat: number; lng: number }) => {
-    await prisma.$executeRaw`
-      INSERT INTO "Pet" (id, name, species, category, reward, "ownerId", status, location, "updatedAt")
-      VALUES (${randomUUID()}, 'Already Found', 'cat', 'cat', 0, ${owner.id}, 'found',
-              ST_SetSRID(ST_MakePoint(${location.lng}, ${location.lat}), 4326)::geography, now())
-    `;
+    await repository.save(buildCreateDto({ location, status: 'found', species: 'cat', category: 'cat', reward: 0 }));
   };
 
   describe('save', () => {
-    it('inserts a pet with status forced to "missing" and returns the persisted row', async () => {
+    it('inserts a pet with the given status and returns the persisted row', async () => {
       const pet = await repository.save(buildCreateDto({ reward: 250 }));
 
       expect(pet.id).toEqual(expect.any(String));
@@ -98,6 +95,22 @@ describe('createPetRepository (integration)', () => {
       expect(pet.updatedAt).toBeInstanceOf(Date);
       expect(pet.location.lat).toBeCloseTo(CENTER.lat, 5);
       expect(pet.location.lng).toBeCloseTo(CENTER.lng, 5);
+    });
+
+    it('persists status "found" when passed, rather than always forcing "missing"', async () => {
+      const pet = await repository.save(buildCreateDto({ status: 'found' }));
+
+      expect(pet.status).toBe('found');
+    });
+
+    it('persists phone, distinguishingMarks, and photoUrl', async () => {
+      const pet = await repository.save(
+        buildCreateDto({ phone: '111222333', distinguishingMarks: 'Biała łatka na łapie', photoUrl: 'data:image/jpeg;base64,AAA' }),
+      );
+
+      expect(pet.phone).toBe('111222333');
+      expect(pet.distinguishingMarks).toBe('Biała łatka na łapie');
+      expect(pet.photoUrl).toBe('data:image/jpeg;base64,AAA');
     });
   });
 

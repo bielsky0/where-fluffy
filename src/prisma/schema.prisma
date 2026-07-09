@@ -11,12 +11,14 @@ datasource db {
 
 model User {
   id          String     @id @default(uuid())
-  email       String     @unique
-  password    String
+  email       String?    @unique
+  password    String?
+  phone       String?    @unique
+  isGhost     Boolean    @default(false)
   name        String
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
-  
+
   // Relacje odwrotne (Prisma ich wymaga do mapowania)
   pets        Pet[]
   comments    Comment[]
@@ -25,13 +27,29 @@ model User {
   messages    Message[]
 }
 
+// Kod OTP dla logowania bez hasła (ghost accounts). "identifier" to e-mail albo telefon podany
+// przez użytkownika — rozłączony od User, bo w momencie żądania kodu konto może jeszcze nie
+// istnieć (patrz auth.service.ts's verifyOtp / findOrCreateGhostUser).
+model OtpCode {
+  id         String   @id @default(uuid())
+  identifier String
+  code       String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([identifier])
+}
+
 model Pet {
-  id        String   @id @default(uuid())
-  name      String
-  species   String
-  status    String   @default("LOST")
-  category  String   @default("other")
-  reward    Int      @default(0) // Przywrócone pole reward
+  id                  String   @id @default(uuid())
+  name                String
+  species             String
+  status              String   @default("missing")
+  category            String   @default("other")
+  reward              Int      @default(0) // Przywrócone pole reward
+  phone               String?
+  distinguishingMarks String?
+  photoUrl            String?
 
   // Pole PostGIS
   location  Unsupported("geography(Point, 4326)")?

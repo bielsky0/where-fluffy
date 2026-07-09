@@ -2,9 +2,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
-import { useLogin, useRegister } from '../api/useAuth';
+import { useLogin, useRegister, useRequestOtp, useVerifyOtp } from '../api/useAuth';
 
 type EmailMode = 'login' | 'register';
+// 'identifier': e-mail lub telefon, wysyła kod (Ghost Account flow, krok 1).
+// 'otp': wpisanie 6-cyfrowego kodu (krok 2) — sukces loguje dokładnie jak hasło.
+// 'password': istniejąca ścieżka e-mail/hasło, wciąż dostępna dla już zarejestrowanych kont.
+type Stage = 'identifier' | 'otp' | 'password';
 
 // A phone number is dragged down past this (px) or flicked past this velocity (px/s) ⇒ treat
 // it as an intentional dismiss rather than a settling bounce; mirrors BottomSheet.tsx's own
@@ -56,30 +60,32 @@ function handleSocialPlaceholder(provider: 'Google' | 'Apple') {
 // layer changed. Mounted once at the true root (App.tsx), not scoped to AppShell, so it's
 // available on every route (spec: "always available" Auth Overlay).
 //
-// Backend reality check: auth.service.ts only ever exposes email/password
-// register+login (see CLAUDE.md's Auth section) — there is no phone/OTP endpoint to call. The
-// phone field below is still built exactly to spec (front-and-center, native numeric/phone
-// keyboard, "Dalej" CTA) since that's the requested first impression, but submitting it can't
-// actually authenticate anyone yet. Rather than fake a success (this codebase's established
-// precedent — see add-listing-wizard/StepFork.tsx's disabled "Znalazłem" tile, LoginPage.tsx's disabled Google
-// button — is to say so plainly instead of pretending), "Dalej" surfaces a toast and reveals a
-// real, working email/password step underneath, so a guest who lands here can still actually
-// log in. The Google/Apple tiles are the same kind of honest placeholder the old AuthModal.tsx
-// already had for its own social buttons.
+// Ghost Account flow: the front-and-center "e-mail lub telefon" field now actually authenticates
+// — it requests a one-time code (POST /auth/otp/request) and, once verified (POST
+// /auth/otp/verify), logs in exactly like the password path (same httpOnly `token` cookie,
+// same useAuthStore/SessionBootstrap sync). The OTP code itself is dev-only right now (no real
+// email/SMS provider is wired up yet, see auth.service.ts's requestOtp) — outside production the
+// backend echoes it back and this component surfaces it via toast so the whole flow is testable
+// end-to-end. The existing password form is kept as a fallback ("Zaloguj hasłem") for accounts
+// that already have one. The Google/Apple tiles remain honest placeholders, same as before.
 export function AuthBottomSheet() {
   const isOpen = useAuthStore((state) => state.isAuthModalOpen);
   const closeAuthModal = useAuthStore((state) => state.closeAuthModal);
   const consumePendingAction = useAuthStore((state) => state.consumePendingAction);
 
-  const [phone, setPhone] = useState('');
-  const [showEmailStep, setShowEmailStep] = useState(false);
+  const [stage, setStage] = useState<Stage>('identifier');
+  const [identifier, setIdentifier] = useState('');
+  const [code, setCode] = useState('');
   const [emailMode, setEmailMode] = useState<EmailMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
 
-  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const identifierInputRef = useRef<HTMLInputElement>(null);
+  const codeInputRef = useRef<HTMLInputElement>(null);
 
+  const requestOtp = useRequestOtp();
+  const verifyOtp = useVerifyOtp();
   const login = useLogin();
   const register = useRegister();
   const isPending = login.isPending || register.isPending;
@@ -89,31 +95,46 @@ export function AuthBottomSheet() {
   // starts from a clean slate rather than resuming a half-filled form from an unrelated attempt.
   useEffect(() => {
     if (isOpen) return;
-    setPhone('');
-    setShowEmailStep(false);
+    setStage('identifier');
+    setIdentifier('');
+    setCode('');
     setEmailMode('login');
     setEmail('');
     setPassword('');
     setName('');
   }, [isOpen]);
 
-  // Flow 1: mounting the sheet also mounts the native phone/numeric keyboard — focusing the
-  // input is deferred one frame so it lands after the slide-up transition starts rather than
-  // racing it. Only while the phone step is actually showing; once showEmailStep flips true
-  // there's a different field to focus, not this one.
+  // Mounting the sheet also mounts the relevant keyboard — focusing the active stage's input is
+  // deferred one frame so it lands after the slide-up transition starts rather than racing it.
   useEffect(() => {
-    if (!isOpen || showEmailStep) return;
-    const raf = requestAnimationFrame(() => phoneInputRef.current?.focus());
+    if (!isOpen) return;
+    const raf = requestAnimationFrame(() => {
+      if (stage === 'identifier') identifierInputRef.current?.focus();
+      if (stage === 'otp') codeInputRef.current?.focus();
+    });
     return () => cancelAnimationFrame(raf);
-  }, [isOpen, showEmailStep]);
+  }, [isOpen, stage]);
 
   if (!isOpen) return null;
 
-  const handlePhoneSubmit = (event: FormEvent) => {
+  const handleIdentifierSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!phone.trim()) return;
-    toast('Logowanie przez SMS pojawi się wkrótce — użyj adresu e-mail poniżej.');
-    setShowEmailStep(true);
+    if (!identifier.trim()) return;
+
+    const result = await requestOtp.mutateAsync({ identifier: identifier.trim() });
+    if (result.devCode) {
+      toast(`Tryb testowy — Twój kod: ${result.devCode}`);
+    }
+    setStage('otp');
+  };
+
+  const handleOtpSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    await verifyOtp.mutateAsync({ identifier: identifier.trim(), code: code.trim() });
+
+    const pendingAction = consumePendingAction();
+    closeAuthModal();
+    pendingAction?.();
   };
 
   const handleEmailSubmit = async (event: FormEvent) => {
@@ -187,27 +208,77 @@ export function AuthBottomSheet() {
                 </h2>
               </div>
 
-              {!showEmailStep ? (
-                <form onSubmit={handlePhoneSubmit} className="mt-8 flex flex-col gap-4">
+              {stage === 'identifier' && (
+                <form onSubmit={(event) => void handleIdentifierSubmit(event)} className="mt-8 flex flex-col gap-4">
                   <input
-                    ref={phoneInputRef}
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    value={phone}
-                    onChange={(event) => setPhone(event.target.value)}
-                    placeholder="Numer telefonu"
+                    ref={identifierInputRef}
+                    type="text"
+                    inputMode="email"
+                    autoComplete="email"
+                    value={identifier}
+                    onChange={(event) => setIdentifier(event.target.value)}
+                    placeholder="E-mail lub numer telefonu"
                     className="w-full rounded-xl border border-neutral-200 px-4 py-3.5 text-base text-black placeholder:text-neutral-400 focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
                   />
+
+                  {requestOtp.isError && (
+                    <p role="alert" className="text-sm text-red-600">
+                      Nie udało się wysłać kodu. Spróbuj ponownie.
+                    </p>
+                  )}
+
                   <button
                     type="submit"
-                    className="w-full rounded-full bg-rose-600 py-4 text-center text-base font-bold text-white transition-colors active:bg-rose-700"
+                    disabled={requestOtp.isPending}
+                    className="w-full rounded-full bg-rose-600 py-4 text-center text-base font-bold text-white transition-colors active:bg-rose-700 disabled:opacity-60"
                   >
-                    Dalej
+                    {requestOtp.isPending ? 'Wysyłanie…' : 'Dalej'}
                   </button>
                 </form>
-              ) : (
-                <form onSubmit={handleEmailSubmit} className="mt-8 flex flex-col gap-3">
+              )}
+
+              {stage === 'otp' && (
+                <form onSubmit={(event) => void handleOtpSubmit(event)} className="mt-8 flex flex-col gap-4">
+                  <p className="text-center text-sm text-neutral-500">
+                    Wpisz 6-cyfrowy kod wysłany na <span className="font-semibold text-black">{identifier}</span>
+                  </p>
+                  <input
+                    ref={codeInputRef}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                    placeholder="000000"
+                    className="w-full rounded-xl border border-neutral-200 px-4 py-3.5 text-center text-lg tracking-[0.5em] text-black placeholder:text-neutral-400 focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                  />
+
+                  {verifyOtp.isError && (
+                    <p role="alert" className="text-sm text-red-600">
+                      Nieprawidłowy lub wygasły kod. Spróbuj ponownie.
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={verifyOtp.isPending || code.trim().length !== 6}
+                    className="w-full rounded-full bg-rose-600 py-4 text-center text-base font-bold text-white transition-colors active:bg-rose-700 disabled:opacity-60"
+                  >
+                    {verifyOtp.isPending ? 'Weryfikacja…' : 'Potwierdź'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStage('identifier')}
+                    className="text-center text-sm font-medium text-neutral-500"
+                  >
+                    Zmień e-mail lub numer telefonu
+                  </button>
+                </form>
+              )}
+
+              {stage === 'password' && (
+                <form onSubmit={(event) => void handleEmailSubmit(event)} className="mt-8 flex flex-col gap-3">
                   {emailMode === 'register' && (
                     <input
                       value={name}
@@ -256,6 +327,13 @@ export function AuthBottomSheet() {
                   >
                     {emailMode === 'login' ? 'Nie masz konta? Zarejestruj się' : 'Masz już konto? Zaloguj się'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setStage('identifier')}
+                    className="text-center text-sm font-medium text-neutral-500"
+                  >
+                    Wróć do logowania kodem
+                  </button>
                 </form>
               )}
 
@@ -284,13 +362,13 @@ export function AuthBottomSheet() {
                 </button>
               </div>
 
-              {!showEmailStep && (
+              {stage !== 'password' && (
                 <button
                   type="button"
-                  onClick={() => setShowEmailStep(true)}
+                  onClick={() => setStage('password')}
                   className="mt-6 text-center text-sm font-semibold text-neutral-500"
                 >
-                  Zaloguj się e-mailem
+                  Zaloguj się hasłem
                 </button>
               )}
             </div>

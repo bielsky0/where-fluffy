@@ -10,6 +10,9 @@ export type RawPetRow = {
   status: string;
   category: string;
   reward: number;
+  phone: string | null;
+  distinguishingMarks: string | null;
+  photoUrl: string | null;
   ownerId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -25,6 +28,9 @@ export const mapToDomain = (row: RawPetRow): IPet => ({
   category: row.category as PetCategory,
   status: row.status as 'missing' | 'found',
   reward: Number(row.reward),
+  phone: row.phone,
+  distinguishingMarks: row.distinguishingMarks,
+  photoUrl: row.photoUrl,
   ownerId: row.ownerId,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -39,6 +45,9 @@ export const mapToResponseDTO = (pet: IPet): PetResponseDTO => ({
   category: pet.category,
   status: pet.status,
   reward: Number(pet.reward),
+  phone: pet.phone,
+  distinguishingMarks: pet.distinguishingMarks,
+  photoUrl: pet.photoUrl,
   location: {
     lat: Number(pet.location.lat),
     lng: Number(pet.location.lng),

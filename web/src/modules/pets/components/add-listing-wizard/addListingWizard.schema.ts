@@ -9,18 +9,20 @@ import { z } from 'zod';
 
 export const reportTypeSchema = z.enum(['lost', 'found']);
 
-// Step 1 (StepFork.tsx) — only 'lost' is actually selectable today; 'found' has no backend
-// endpoint to submit to (see CreatePetReportPayload's own comment), so that tile is disabled
-// rather than validated against here (see StepFork.tsx's own comment on the disabled tile).
+// Step 1 (StepFork.tsx) — both 'lost' and 'found' map to the same Pet record, just with a
+// different `status` (see CreatePetReportPayload / the backend's createPetSchema), so both tiles
+// are selectable.
 export const stepForkSchema = z.object({
   reportType: reportTypeSchema,
 });
 
-// Step 2 (StepPhoto.tsx) — deliberately unconstrained. A photo is a nice-to-have, not required
-// to file a report, and (see useAddListingWizardStore.ts) it's local-only anyway: the backend's
-// CreatePetDTO has no field to receive it yet.
+// Step 2 (StepPhoto.tsx) — deliberately unconstrained (a photo isn't required to file a report).
+// The field is a compressed base64 data URL (see lib/compressImage.ts), not a File — encoding it
+// at selection time is what lets it survive localStorage/JSON.stringify (see
+// useAddListingWizardStore.ts's own comment on `photo`) and it's sent straight through as the
+// backend's `photoBase64` field.
 export const stepPhotoSchema = z.object({
-  photo: z.instanceof(File).nullable(),
+  photo: z.string().nullable(),
 });
 
 const coordinateSchema = z.object({
@@ -41,14 +43,21 @@ export const stepMapPinSchema = z.object({
 export const petTypeSchema = z.enum(['dog', 'cat', 'other']);
 
 // Step 4 (StepDetails.tsx). `name` isn't part of the original wizard spec's field list, but
-// pets.schema.ts's createPetSchema requires it (`name: z.string().min(2)`) for the POST /pets
-// call this step ultimately drives — added here rather than silently defaulting it to something
-// meaningless at submit time.
+// the backend's createPetSchema requires it (`name: z.string().min(2)`) for the POST /pets call
+// this step ultimately drives — added here rather than silently defaulting it to something
+// meaningless at submit time. `phone`/`reward`/`distinguishingMarks` mirror the same backend
+// schema's own fields.
 export const stepDetailsSchema = z.object({
   name: z.string().min(2, 'Podaj imię zwierzaka (min. 2 znaki)'),
   petType: petTypeSchema,
   description: z.string().min(10, 'Opisz sytuację (min. 10 znaków)').max(500),
+  phone: z.string().min(9, 'Podaj numer telefonu (min. 9 cyfr)').max(20),
+  reward: z.number().nonnegative().default(0),
+  distinguishingMarks: z.string().max(300).optional(),
 });
+
+// Step 5 (StepReview.tsx) — pure summary/confirmation, no new fields of its own to validate.
+export const stepReviewSchema = z.object({});
 
 export const addListingWizardSchema = stepForkSchema
   .merge(stepPhotoSchema)
@@ -57,11 +66,12 @@ export const addListingWizardSchema = stepForkSchema
 
 export type AddListingWizardFormValues = z.infer<typeof addListingWizardSchema>;
 
-// Keyed 1-4 to match WizardStep (useAddListingWizardStore.ts) — consumed by
+// Keyed 1-5 to match WizardStep (useAddListingWizardStore.ts) — consumed by
 // AddListingWizard.tsx's per-step resolver.
 export const STEP_SCHEMAS = {
   1: stepForkSchema,
   2: stepPhotoSchema,
   3: stepMapPinSchema,
   4: stepDetailsSchema,
+  5: stepReviewSchema,
 } as const;

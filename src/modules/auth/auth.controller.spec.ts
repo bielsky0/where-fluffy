@@ -74,6 +74,8 @@ describe('auth controller (via supertest)', () => {
         id: 'user-1',
         email: 'jane@example.com',
         name: 'Jane Doe',
+        phone: null,
+        isGhost: false,
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
       });

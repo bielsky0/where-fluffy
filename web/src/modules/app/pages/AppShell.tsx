@@ -92,18 +92,19 @@ export default function AppShell() {
 
   const runGatedAction = (action: ActionId) => runProtected(() => runAction(action));
 
-  // GuestTabBar's own action set (see that file) — 'discover' is the one tab that needs no
-  // session at all (same intent as BottomNav's 'list'), so it runs directly; 'add' and 'login'
-  // both exist only to reach a session, so both simply request one via useProtectedAction,
-  // differing only in which action resumes once AuthBottomSheet succeeds — 'add' resumes into
-  // AddListingWizard the same way BottomNav's gated 'report' tab would, 'login' has nothing to
-  // resume into beyond landing on the feed, which is what runAction('list') already does.
+  // GuestTabBar's own action set (see that file) — 'discover' and 'add' both need no session at
+  // all: the frictionless-onboarding wizard (AddListingWizard.tsx) is explicitly "zero barriers"
+  // up front (spec: intent + photo + location + details, no login prompt), gating auth only at
+  // its own final "Opublikuj" step via useProtectedAction (Ghost Account/OTP flow) — gating it
+  // here too, before the wizard even opens, would defeat that design and show AuthBottomSheet
+  // twice for the same guest. 'login' is the only tab that still needs a session up front, since
+  // it has nothing else to do.
   const runGuestAction = (action: GuestNavAction) => {
-    if (action === 'discover') {
-      runAction('list');
+    if (action === 'discover' || action === 'add') {
+      runAction(action === 'add' ? 'report' : 'list');
       return;
     }
-    runProtected(() => runAction(action === 'add' ? 'report' : 'list'));
+    runProtected(() => runAction('list'));
   };
 
   const activeAction: NavAction | undefined =

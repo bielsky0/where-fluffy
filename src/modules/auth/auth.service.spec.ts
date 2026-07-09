@@ -48,6 +48,8 @@ describe('createAuthService', () => {
         id: 'user-99',
         email: 'jane@example.com',
         name: 'Jane Doe',
+        phone: null,
+        isGhost: false,
         createdAt: expect.any(Date),
         updatedAt: expect.any(Date),
       });
@@ -151,6 +153,75 @@ describe('createAuthService', () => {
         message: 'Niepoprawny e-mail lub hasło',
       });
       expect(mockTokenService.sign).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('requestOtp', () => {
+    const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+
+    afterEach(() => {
+      process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+    });
+
+    it('generates a 6-digit code, persists it via repository.createOtp, and echoes it back outside production', async () => {
+      process.env.NODE_ENV = 'test';
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+
+      const result = await service.requestOtp('jane@example.com');
+
+      expect(mockRepository.createOtp).toHaveBeenCalledTimes(1);
+      const [identifier, code, expiresAt] = mockRepository.createOtp.mock.calls[0];
+      expect(identifier).toBe('jane@example.com');
+      expect(code).toMatch(/^\d{6}$/);
+      expect(expiresAt.getTime()).toBeGreaterThan(Date.now());
+      expect(result.devCode).toBe(code);
+    });
+
+    it('does not echo the code back when NODE_ENV is production', async () => {
+      process.env.NODE_ENV = 'production';
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+
+      const result = await service.requestOtp('jane@example.com');
+
+      expect(result.devCode).toBeUndefined();
+    });
+  });
+
+  describe('verifyOtp', () => {
+    it('rejects with a 401 for a missing or expired code, without creating any user', async () => {
+      mockRepository.findValidOtp.mockResolvedValue(null);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+
+      await expect(service.verifyOtp('jane@example.com', '123456')).rejects.toMatchObject({
+        statusCode: 401,
+        message: 'Nieprawidłowy lub wygasły kod',
+      });
+      expect(mockRepository.findOrCreateGhostUser).not.toHaveBeenCalled();
+    });
+
+    it('deletes the consumed OTP, finds-or-creates a ghost user, and returns a signed token', async () => {
+      mockRepository.findValidOtp.mockResolvedValue({ id: 'otp-1' });
+      const ghostUser = buildUser({
+        id: 'ghost-1',
+        email: null,
+        phone: '600100200',
+        isGhost: true,
+        password: null,
+        name: 'Gość',
+      });
+      mockRepository.findOrCreateGhostUser.mockResolvedValue(ghostUser);
+      mockTokenService.sign.mockReturnValue('signed.jwt.token');
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+
+      const result = await service.verifyOtp('600100200', '123456');
+
+      expect(mockRepository.deleteOtp).toHaveBeenCalledWith('otp-1');
+      expect(mockRepository.findOrCreateGhostUser).toHaveBeenCalledWith('600100200');
+      expect(mockTokenService.sign).toHaveBeenCalledWith({ id: 'ghost-1', email: null, name: 'Gość' });
+      expect(result).toEqual({
+        user: { id: 'ghost-1', email: null, name: 'Gość' },
+        token: 'signed.jwt.token',
+      });
     });
   });
 });

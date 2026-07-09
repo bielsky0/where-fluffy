@@ -9,6 +9,10 @@ import { LoginDTO } from './dto/login.dto.js';
 export const buildMockRepository = (): jest.Mocked<AuthRepository> => ({
   findByEmail: jest.fn(),
   create: jest.fn(),
+  createOtp: jest.fn(),
+  findValidOtp: jest.fn(),
+  deleteOtp: jest.fn(),
+  findOrCreateGhostUser: jest.fn(),
 });
 
 export const buildMockHasher = (): jest.Mocked<PasswordHasher> => ({
@@ -24,6 +28,8 @@ export const buildUser = (overrides: Partial<IUser> = {}): IUser => ({
   id: 'user-1',
   email: 'jane@example.com',
   password: 'hashed-password',
+  phone: null,
+  isGhost: false,
   name: 'Jane Doe',
   createdAt: new Date('2026-01-01T10:00:00.000Z'),
   updatedAt: new Date('2026-01-01T10:00:00.000Z'),

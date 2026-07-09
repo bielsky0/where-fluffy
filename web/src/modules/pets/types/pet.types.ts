@@ -12,6 +12,9 @@ export interface Pet {
   category: PetTypeFilter;
   status: PetStatus;
   reward: number;
+  phone: string | null;
+  distinguishingMarks: string | null;
+  photoUrl: string | null;
   location: {
     lat: number;
     lng: number;
@@ -26,12 +29,16 @@ export interface NearbyPetsQuery {
 }
 
 // Matches CreatePetDTO (src/modules/pets/dto/create-pet.dto.ts) minus `ownerId` — the backend
-// derives that from the authenticated request, not the client. Note there is only a "report
-// missing" endpoint (`pets.service.ts`'s `reportMissingPet`) — there is no way to create a
-// pet record with status 'found'; see add-listing-wizard/StepFork.tsx for how that gap is surfaced in the UI.
+// derives that from the authenticated request, not the client. `photoBase64` is a compressed
+// data URL (see add-listing-wizard/lib/compressImage.ts), exchanged server-side for a stored
+// `photoUrl` (see photo.service.ts).
 export interface CreatePetReportPayload {
   name: string;
   species: string;
+  status: PetStatus;
   location: { lat: number; lng: number };
   reward: number;
+  phone: string;
+  distinguishingMarks?: string;
+  photoBase64?: string;
 }

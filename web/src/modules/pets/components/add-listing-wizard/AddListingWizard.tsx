@@ -1,17 +1,21 @@
+import { useEffect } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
 import { Button } from '@/shared/ui';
+import { useProtectedAction } from '@/modules/auth/hooks/useProtectedAction';
 import { useCreatePetReport } from '../../api/usePets';
 import { PET_TYPE_LABELS } from '../../lib/petType';
+import type { CreatePetReportPayload } from '../../types/pet.types';
 import { useAddListingWizardStore, type AddListingWizardData, type WizardStep } from '../../store/useAddListingWizardStore';
 import { STEP_SCHEMAS } from './addListingWizard.schema';
 import { StepFork } from './StepFork';
 import { StepPhoto } from './StepPhoto';
 import { StepMapPin } from './StepMapPin';
 import { StepDetails } from './StepDetails';
+import { StepReview } from './StepReview';
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 interface AddListingWizardProps {
   onClose: () => void;
@@ -27,9 +31,10 @@ const stepAwareResolver: Resolver<AddListingWizardData> = (values, context, opti
   return zodResolver(STEP_SCHEMAS[step])(values, context, options);
 };
 
-// Production entry point for filing a new report — see the module README-style comment in
-// addListingWizard.schema.ts for the backend gaps (no "found" endpoint, no photo/description
-// column) this wizard deliberately works around rather than papers over.
+// Production entry point for filing a new report (both "lost" and "found" — see StepFork.tsx),
+// including the Ghost Account guest flow: step 5's "Opublikuj" is wrapped in useProtectedAction,
+// so a guest is routed through AuthBottomSheet's OTP verification first, and the same publish
+// closure re-fires automatically the instant that succeeds (see useProtectedAction.ts).
 export function AddListingWizard({ onClose }: AddListingWizardProps) {
   const step = useAddListingWizardStore((state) => state.step);
   const data = useAddListingWizardStore((state) => state.data);
@@ -37,6 +42,7 @@ export function AddListingWizard({ onClose }: AddListingWizardProps) {
   const updateData = useAddListingWizardStore((state) => state.updateData);
   const resetWizard = useAddListingWizardStore((state) => state.reset);
   const createReport = useCreatePetReport();
+  const protectedPublish = useProtectedAction();
   const dalejControls = useAnimationControls();
 
   const form = useForm<AddListingWizardData>({
@@ -47,37 +53,63 @@ export function AddListingWizard({ onClose }: AddListingWizardProps) {
   const { control, register, handleSubmit, watch, formState } = form;
 
   // Step 1 only: "activates the Dalej button" per spec — a binary tile choice reads more clearly
-  // as disabled-until-chosen than as a shake target. Steps 2-4 stay clickable and rely on the
+  // as disabled-until-chosen than as a shake target. Steps 2-5 stay clickable and rely on the
   // shake + inline field errors below, since their fields are text/optional rather than binary.
   const reportType = watch('reportType');
-  const canProceedStep1 = reportType === 'lost';
+  const canProceedStep1 = reportType === 'lost' || reportType === 'found';
 
   const shakeDalej = () => {
     void dalejControls.start({ x: [0, -8, 8, -8, 8, 0], transition: { duration: 0.4 } });
   };
 
-  const submitLostReport = async (values: AddListingWizardData) => {
-    await createReport.mutateAsync({
+  const publishReport = (values: AddListingWizardData) => {
+    const payload: CreatePetReportPayload = {
       name: values.name,
       species: PET_TYPE_LABELS[values.petType!],
+      status: values.reportType === 'found' ? 'found' : 'missing',
       location: values.location,
-      reward: 0,
-    });
-    resetWizard();
-    onClose();
+      reward: values.reward,
+      phone: values.phone,
+      distinguishingMarks: values.distinguishingMarks || undefined,
+      photoBase64: values.photo || undefined,
+    };
+    // Fire-and-forget `.mutate` (not `.mutateAsync`) — this closure is exactly what
+    // useProtectedAction stores as `pendingAction` (a plain `() => void`), resumed automatically
+    // once a guest finishes the OTP flow. The mutation itself may pause offline and resolve much
+    // later (see queryClient.ts's `networkMode: 'offlineFirst'`); StepReview.tsx and the
+    // isSuccess effect below react to that whenever it happens, independent of this call site.
+    createReport.mutate(payload);
   };
 
   const onDalej = handleSubmit(
     (values) => {
+      // `values` here is zodResolver's *parsed output* for the current step's own schema only
+      // (see addListingWizard.schema.ts's STEP_SCHEMAS) — e.g. on step 5, stepReviewSchema is
+      // `z.object({})`, so `values` comes back as `{}`, stripped of every other field. That's
+      // fine for the `updateData` merge below (it only ever patches in what this step actually
+      // owns), but publishing must read the *full* accumulated draft, not this step-scoped
+      // subset — hence `useAddListingWizardStore.getState().data` (synchronously up to date
+      // right after `updateData`'s `set()` call) rather than `values` itself.
       updateData(values);
       if (step < TOTAL_STEPS) {
         setStep((step + 1) as WizardStep);
         return;
       }
-      void submitLostReport(values);
+      const fullData = useAddListingWizardStore.getState().data;
+      protectedPublish(() => publishReport(fullData));
     },
     () => shakeDalej(),
   );
+
+  // Closes and clears the draft once the report has actually been accepted by the server —
+  // deliberately not tied to the "Opublikuj" click itself, since an offline-paused mutation (see
+  // StepReview.tsx's SubmitStatus) may only resolve well after that tap.
+  useEffect(() => {
+    if (!createReport.isSuccess) return;
+    resetWizard();
+    onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createReport.isSuccess]);
 
   const onWstecz = () => {
     updateData(form.getValues());
@@ -99,6 +131,10 @@ export function AddListingWizard({ onClose }: AddListingWizardProps) {
   };
 
   const progressPercent = (step / TOTAL_STEPS) * 100;
+  // Once a submission has actually been attempted, StepReview.tsx takes over the full step-5
+  // area with its own status screen (sending/queued-offline/success/error) — the generic
+  // "Opublikuj" footer button would be redundant on top of that.
+  const isSubmitting = step === TOTAL_STEPS && createReport.status !== 'idle';
 
   return (
     // z-[1200]: must beat both BottomNav/GuestTabBar (z-[1100], persistent across every
@@ -164,29 +200,27 @@ export function AddListingWizard({ onClose }: AddListingWizardProps) {
           >
             {step === 1 && <StepFork control={control} />}
             {step === 2 && <StepPhoto control={control} />}
-            {step === 3 && <StepMapPin control={control} />}
+            {step === 3 && <StepMapPin control={control} reportType={reportType} />}
             {step === 4 && <StepDetails register={register} errors={formState.errors} />}
+            {step === 5 && <StepReview control={control} mutation={createReport} />}
           </motion.div>
         </AnimatePresence>
 
         {/* Sticky footer FAB — fixed regardless of step content length/scroll position, per spec. */}
-        <div className="shrink-0 border-t border-gray-200 bg-white px-6 pb-safe pt-4">
-          <motion.div animate={dalejControls}>
-            <Button
-              type="submit"
-              size="lg"
-              className="h-14 w-full rounded-full bg-coral text-base font-bold text-white shadow-sm hover:bg-coral-hover"
-              disabled={(step === 1 && !canProceedStep1) || createReport.isPending}
-            >
-              {step === TOTAL_STEPS ? (createReport.isPending ? 'Wysyłanie…' : 'Opublikuj') : 'Dalej'}
-            </Button>
-          </motion.div>
-          {createReport.isError && (
-            <p role="alert" className="mt-2 text-center text-xs text-destructive">
-              Nie udało się wysłać zgłoszenia. Spróbuj ponownie.
-            </p>
-          )}
-        </div>
+        {!isSubmitting && (
+          <div className="shrink-0 border-t border-gray-200 bg-white px-6 pb-safe pt-4">
+            <motion.div animate={dalejControls}>
+              <Button
+                type="submit"
+                size="lg"
+                className="h-14 w-full rounded-full bg-coral text-base font-bold text-white shadow-sm hover:bg-coral-hover"
+                disabled={step === 1 && !canProceedStep1}
+              >
+                {step === TOTAL_STEPS ? 'Opublikuj' : 'Dalej'}
+              </Button>
+            </motion.div>
+          </div>
+        )}
       </form>
     </div>
   );

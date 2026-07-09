@@ -8,18 +8,21 @@ import type { AddListingWizardData } from '../../store/useAddListingWizardStore'
 
 interface StepMapPinProps {
   control: Control<AddListingWizardData>;
+  reportType: 'lost' | 'found' | null;
 }
 
 // Step 3 — a fixed center-screen pin over a draggable map, the standard "where the map settles
 // is the location" pattern (Uber/Airbnb-style picker). `Map`'s own `center` prop is read once on
 // mount only (react-leaflet limitation, see LeafletMap.tsx), so the pin's actual coordinate lives
 // in RHF/Zustand via `onCenterChange`, never fed back into `center` itself.
-export function StepMapPin({ control }: StepMapPinProps) {
+export function StepMapPin({ control, reportType }: StepMapPinProps) {
   return (
     <Controller
       name="location"
       control={control}
-      render={({ field }) => <MapPinField initialCenter={field.value} onCenterChange={field.onChange} />}
+      render={({ field }) => (
+        <MapPinField initialCenter={field.value} onCenterChange={field.onChange} reportType={reportType} />
+      )}
     />
   );
 }
@@ -27,9 +30,11 @@ export function StepMapPin({ control }: StepMapPinProps) {
 function MapPinField({
   initialCenter,
   onCenterChange,
+  reportType,
 }: {
   initialCenter: Coordinate;
   onCenterChange: (center: Coordinate) => void;
+  reportType: 'lost' | 'found' | null;
 }) {
   const [mountCenter] = useState(initialCenter);
   const [focusTarget, setFocusTarget] = useState<Coordinate | null>(null);
@@ -51,8 +56,14 @@ function MapPinField({
   return (
     <div className="flex flex-1 flex-col gap-4 pt-2">
       <div className="flex flex-col gap-2 px-6">
-        <h1 className="text-xl font-bold text-ink sm:text-2xl">Zaznacz lokalizację</h1>
-        <p className="text-sm text-subtle">Przesuń mapę, aby ustawić dokładne miejsce zdarzenia.</p>
+        <h1 className="text-xl font-bold text-ink sm:text-2xl">
+          {reportType === 'found' ? 'Miejsce znalezienia' : 'Miejsce zaginięcia'}
+        </h1>
+        <p className="text-sm text-subtle">
+          {reportType === 'found'
+            ? 'Przesuń mapę, aby zaznaczyć, gdzie znalazłeś/aś zwierzaka.'
+            : 'Przesuń mapę, aby ustawić dokładne miejsce zaginięcia.'}
+        </p>
       </div>
 
       <div className="relative flex-1">

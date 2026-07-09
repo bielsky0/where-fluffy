@@ -53,12 +53,9 @@ function ForkTile({ emoji, label, description, selected, disabled, disabledHint,
   );
 }
 
-// Step 1 — the wizard's fork. "Znalazłem" stays visible but disabled: the backend only exposes
-// `reportMissingPet` (see pets.schema.ts / CreatePetReportPayload's own comment), so there is no
-// endpoint a "found" report could actually submit to yet. Disabling it here, at the point of
-// selection — the same "don't fake a capability we don't have" stance the old AddReportModal.tsx
-// took with its own disabled "Found" tab, before this wizard superseded it — surfaces the gap
-// immediately instead of letting the user fill out four steps and hit a dead end at the end.
+// Step 1 — the wizard's fork. Both tiles submit to the same POST /pets endpoint, just with a
+// different `status` ('missing' vs 'found', see CreatePetReportPayload) — later steps swap their
+// copy based on this choice (e.g. StepMapPin's "miejsce zaginięcia" vs "miejsce znalezienia").
 export function StepFork({ control }: StepForkProps) {
   return (
     <Controller
@@ -83,10 +80,8 @@ export function StepFork({ control }: StepForkProps) {
             <ForkTile
               emoji="🐾"
               label="Znalazłem zwierzaka"
-              description="Zgłoszenia znalezionych zwierząt jeszcze nie są obsługiwane — dodaj obserwację do istniejącego zgłoszenia zamiast tego."
+              description="Zgłoś znalezisko i pomóż połączyć zwierzaka z jego właścicielem."
               selected={field.value === 'found'}
-              disabled
-              disabledHint="Zgłoszenia znalezionych zwierząt jeszcze nie są obsługiwane — dodaj obserwację do istniejącego zgłoszenia zamiast tego."
               onSelect={() => field.onChange('found')}
             />
           </div>

@@ -14,6 +14,9 @@ export interface IPet {
   ownerId: string;
   status: 'missing' | 'found';
   reward: number;
+  phone: string | null;
+  distinguishingMarks: string | null;
+  photoUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

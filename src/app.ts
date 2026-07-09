@@ -22,7 +22,10 @@ export const createApp = () => {
     credentials: true
   }));
 
-  app.use(express.json());
+  // Domyślny limit (100kb) jest za mały na zdjęcie zakodowane jako base64 (patrz
+  // shared/photo/photo.service.ts / pets.schema.ts's photoBase64) — kompresja po stronie klienta
+  // (compressImage.ts) trzyma to w rozsądnych granicach, ale trzeba dać jej gdzie się zmieścić.
+  app.use(express.json({ limit: '5mb' }));
   app.use(cookieParser());
 
   // Globalna, luźna ochrona przed nadużyciami dla całego /api/v1, per IP. Osobne, ostrzejsze

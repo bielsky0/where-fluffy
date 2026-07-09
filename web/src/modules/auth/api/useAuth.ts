@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/apiClient';
-import type { LoginPayload, LoginResponse, RegisterPayload, User } from '../types/auth.types';
+import type {
+  LoginPayload,
+  LoginResponse,
+  RegisterPayload,
+  RequestOtpPayload,
+  RequestOtpResponse,
+  User,
+  VerifyOtpPayload,
+} from '../types/auth.types';
 
 // Shared cache key for the session-verification query below — also used by useLogin/useLogout
 // to write straight into the same cache entry, and by AppProviders.tsx to exclude this query
@@ -59,5 +67,34 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => apiFetch<void>('/auth/logout', { method: 'POST' }),
     onSuccess: () => queryClient.setQueryData(AUTH_ME_QUERY_KEY, null),
+  });
+}
+
+// POST /auth/otp/request (src/modules/auth/auth.routes.ts) — Ghost Account flow, step 1. No
+// session is established here; `identifier` (e-mail or phone) just gets a one-time code.
+export function useRequestOtp() {
+  return useMutation({
+    mutationFn: (payload: RequestOtpPayload) =>
+      apiFetch<RequestOtpResponse>('/auth/otp/request', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+  });
+}
+
+// POST /auth/otp/verify — Ghost Account flow, step 2. Mirrors useLogin exactly: the JWT comes
+// back as the same httpOnly `token` cookie, and the resulting user is written straight into the
+// /auth/me query cache so the rest of the app (useAuthStore via SessionBootstrap) picks it up
+// immediately, no page reload needed.
+export function useVerifyOtp() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: VerifyOtpPayload) =>
+      apiFetch<LoginResponse>('/auth/otp/verify', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (data) => queryClient.setQueryData(AUTH_ME_QUERY_KEY, data),
   });
 }

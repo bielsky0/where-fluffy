@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Controller, type Control } from 'react-hook-form';
+import { compressImage } from '../../lib/compressImage';
 import type { AddListingWizardData } from '../../store/useAddListingWizardStore';
 
 interface StepPhotoProps {
@@ -13,27 +14,31 @@ export function StepPhoto({ control }: StepPhotoProps) {
     <Controller
       name="photo"
       control={control}
-      render={({ field }) => <PhotoField file={field.value} onChange={field.onChange} />}
+      render={({ field }) => <PhotoField photoBase64={field.value} onChange={field.onChange} />}
     />
   );
 }
 
-function PhotoField({ file, onChange }: { file: File | null; onChange: (file: File | null) => void }) {
+function PhotoField({ photoBase64, onChange }: { photoBase64: string | null; onChange: (value: string | null) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
 
-  // Derived from `file`, not persisted alongside it (see useAddListingWizardStore.ts's own
-  // comment) — objectURLs must be revoked on every change or they leak, which is much easier to
-  // get right scoped to this one effect than duplicated across every place `photo` is set.
-  useEffect(() => {
+  const handleFileSelected = async (file: File | undefined) => {
     if (!file) {
-      setPreviewUrl(null);
+      onChange(null);
       return;
     }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    setIsCompressing(true);
+    try {
+      // Compressed (≤1080px width JPEG) before it ever touches the store — this is what lets the
+      // result be a small-enough base64 string to persist to localStorage and eventually POST as
+      // JSON (see compressImage.ts / photo.service.ts on the backend).
+      const dataUrl = await compressImage(file);
+      onChange(dataUrl);
+    } finally {
+      setIsCompressing(false);
+    }
+  };
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 pt-2">
@@ -49,16 +54,16 @@ function PhotoField({ file, onChange }: { file: File | null; onChange: (file: Fi
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={(event) => onChange(event.target.files?.[0] ?? null)}
+        onChange={(event) => void handleFileSelected(event.target.files?.[0])}
       />
 
       <div className="flex flex-1 items-start justify-center">
-        {previewUrl ? (
+        {photoBase64 ? (
           // "Hero" status once a photo exists — a large square image is the star of the step;
           // "Zmień" is the one prominent, coral-accented control in the corner, "✕" stays a
           // small neutral affordance so it doesn't compete with it for attention.
           <div className="relative aspect-square w-full max-w-sm overflow-hidden rounded-3xl shadow-sm">
-            <img src={previewUrl} alt="Podgląd zdjęcia zwierzaka" className="size-full object-cover" />
+            <img src={photoBase64} alt="Podgląd zdjęcia zwierzaka" className="size-full object-cover" />
             <button
               type="button"
               aria-label="Usuń zdjęcie"
@@ -82,12 +87,13 @@ function PhotoField({ file, onChange }: { file: File | null; onChange: (file: Fi
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="flex aspect-square w-full max-w-sm flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-gray-300 bg-white text-subtle transition-colors hover:border-coral hover:text-coral"
+            disabled={isCompressing}
+            className="flex aspect-square w-full max-w-sm flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-gray-300 bg-white text-subtle transition-colors hover:border-coral hover:text-coral disabled:opacity-60"
           >
             <span className="flex size-16 items-center justify-center rounded-full bg-gray-100 text-3xl shadow-sm">
               📷
             </span>
-            <span className="text-sm font-medium">Dodaj zdjęcie</span>
+            <span className="text-sm font-medium">{isCompressing ? 'Przetwarzanie…' : 'Dodaj zdjęcie'}</span>
             <span className="text-xs text-subtle/80">Dotknij, aby wybrać z galerii</span>
           </button>
         )}

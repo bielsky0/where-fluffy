@@ -7,7 +7,10 @@ export interface PetResponseDTO {
   category: PetCategory;
   status: 'missing' | 'found';
   reward: number;
-  location: { 
+  phone: string | null;
+  distinguishingMarks: string | null;
+  photoUrl: string | null;
+  location: {
     lat: number;
     lng: number;
   };

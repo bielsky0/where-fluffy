@@ -4,20 +4,23 @@ import { FALLBACK_ORIGIN } from '@/shared/config/geo.config';
 import type { PetTypeFilter } from '../lib/petType';
 import type { Coordinate } from '@/shared/components/map';
 
-export type WizardStep = 1 | 2 | 3 | 4;
+export type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 export interface AddListingWizardData {
   reportType: 'lost' | 'found' | null;
-  // Kept local-only (see addListingWizard.schema.ts's own comment) — the backend's CreatePetDTO
-  // has no photo field yet, so this never reaches useCreatePetReport's payload. The preview
-  // thumbnail is derived from this File directly (an objectURL, see StepPhoto.tsx) rather than
-  // also stored here — deriving it keeps this store from holding a blob URL that needs its own
-  // revoke lifecycle.
-  photo: File | null;
+  // A compressed (see lib/compressImage.ts), base64-encoded JPEG data URL — a plain string, so
+  // (unlike the `File` this used to hold) it survives JSON.stringify/localStorage naturally. That
+  // matters specifically because the wizard's last step may need to send the user through the
+  // Ghost Account OTP flow (AuthBottomSheet), which can involve a tab switch (SMS app / email
+  // client) — the draft, photo included, must still be here on return.
+  photo: string | null;
   location: Coordinate;
   name: string;
   petType: PetTypeFilter | null;
   description: string;
+  phone: string;
+  reward: number;
+  distinguishingMarks: string;
 }
 
 interface AddListingWizardState {
@@ -37,11 +40,12 @@ const INITIAL_DATA: AddListingWizardData = {
   name: '',
   petType: null,
   description: '',
+  phone: '',
+  reward: 0,
+  distinguishingMarks: '',
 };
 
 const STORAGE_KEY = 'where-fluffy:add-listing-wizard-draft';
-
-type PersistedWizardState = Pick<AddListingWizardState, 'step' | 'data'>;
 
 // Multi-step form state for the "Add Listing" wizard (AddListingWizard.tsx), separate from
 // usePetMapStore's map/drawer UI state since the two change for unrelated reasons and this one
@@ -65,14 +69,6 @@ export const useAddListingWizardStore = create<AddListingWizardState>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      // File objects don't survive JSON.stringify as `File` (they serialize to `{}`), and the
-      // field is local-only/derived-preview anyway (see AddListingWizardData's own comment on
-      // `photo`), so a rehydrated draft always comes back with no photo and the user re-attaches
-      // one, rather than restoring a corrupt non-null placeholder.
-      partialize: (state): PersistedWizardState => ({
-        step: state.step,
-        data: { ...state.data, photo: null },
-      }),
     },
   ),
 );

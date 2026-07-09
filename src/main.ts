@@ -1,6 +1,13 @@
-// Musi być pierwszym importem w całym procesie — OpenTelemetry patchuje moduły (http, prisma,
-// socket.io, redis) w momencie ich załadowania, więc rejestracja instrumentacji nie może nastąpić
-// po tym, jak którykolwiek z nich zostanie zaimportowany (nawet transitywnie przez './app.js').
+// Musi być przed wszystkim innym: instrumentation.ts (poniżej) czyta OTEL_SERVICE_NAME/
+// OTEL_EXPORTER_OTLP_ENDPOINT z process.env od razu przy imporcie (patrz otel.config.ts), a bez
+// tego .env nigdy nie jest ładowany przez zwykłe `npm run dev`/`tsx` — to samo rozwiązanie co
+// prisma.config.ts już stosuje dla CLI Prismy.
+import 'dotenv/config';
+
+// Musi być pierwszym importem OpenTelemetry-świadomym w całym procesie — OpenTelemetry patchuje
+// moduły (http, prisma, socket.io, redis) w momencie ich załadowania, więc rejestracja
+// instrumentacji nie może nastąpić po tym, jak którykolwiek z nich zostanie zaimportowany
+// (nawet transitywnie przez './app.js').
 import { shutdownOtel } from './instrumentation.js';
 
 import http from 'http';

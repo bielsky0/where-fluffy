@@ -53,18 +53,19 @@ export default {
           DEFAULT: 'hsl(var(--popover) / <alpha-value>)',
           foreground: 'hsl(var(--popover-foreground) / <alpha-value>)',
         },
-        // Fixed brand literals for the add-listing wizard's Airbnb-style rebrand
-        // (modules/pets/components/add-listing-wizard/) — deliberately flat hex, not HSL-var
-        // tokens: that flow is spec'd to stay pure-white with a coral accent regardless of the
-        // app's own light/dark theme, so it intentionally opts out of the `.dark`-swappable
-        // system above rather than reusing/repurposing `--primary`. Not used outside that one
-        // component tree.
+        // Fixed brand literals for the Airbnb-style surfaces (modules/pets/components/
+        // add-listing-wizard/, modules/landing/) — deliberately flat hex, not HSL-var tokens:
+        // both are spec'd to stay on this exact palette regardless of the app's own light/dark
+        // theme, so they intentionally opt out of the `.dark`-swappable system above rather than
+        // reusing/repurposing `--primary`. Not used outside those component trees.
         coral: {
           DEFAULT: '#FF385C',
           hover: '#E31C5F',
         },
         ink: '#222222',
         subtle: '#717171',
+        // Landing page's "highlighted section" background (vs. plain white) — see LandingPage.tsx.
+        surface: '#F7F7F7',
       },
       // Friendly brand = soft corners by default; `--radius` is the one knob that reshapes
       // every component built on these tokens (see globals.css).

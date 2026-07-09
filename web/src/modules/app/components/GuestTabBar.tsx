@@ -50,7 +50,7 @@ const ITEMS: { id: GuestNavAction; label: string; Icon: () => JSX.Element }[] = 
 ];
 
 // Unauthenticated counterpart to BottomNav.tsx, swapped in by AppShell.tsx whenever
-// useSessionStore has no currentUser. Same three-tab, equal-weight shape and the same fixed
+// useAuthStore has no currentUser. Same three-tab, equal-weight shape and the same fixed
 // bottom-of-viewport placement/z-index (z-[1100]) as BottomNav — that z-index matters here
 // specifically because AuthBottomSheet.tsx sits above it (z-[1500]) while its own backdrop
 // sits below it (z-[1050]): this bar's opaque white background is what keeps it legible

@@ -1,16 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { toast } from 'sonner';
-import { useAuthStore, type AttemptedAction } from '../store/useAuthStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { useLogin, useRegister } from '../api/useAuth';
-
-interface AuthBottomSheetProps {
-  // Called once a session actually exists, with whatever action (if any) triggered the sheet —
-  // the caller (AppShell.tsx) owns interpreting what that action means and running it; this
-  // component only knows how to authenticate, not what "add a report" or "go to feed" do. Same
-  // contract the old AuthModal.tsx exposed.
-  onAuthenticated?: (attemptedAction: AttemptedAction | null) => void;
-}
 
 type EmailMode = 'login' | 'register';
 
@@ -59,9 +51,10 @@ function handleSocialPlaceholder(provider: 'Google' | 'Apple') {
 }
 
 // Premium replacement for the old AuthModal.tsx, triggered the same way (GuestTabBar.tsx's
-// "Dodaj"/"Zaloguj się", or BottomNav.tsx's gated tabs via useAuthStore.requestAuth) and
-// sharing the same open/close/attempted-action contract from useAuthStore — only the visual
-// and gesture layer changed.
+// "Dodaj"/"Zaloguj się", or BottomNav.tsx's gated tabs, both via useProtectedAction) and sharing
+// the same open/close/pendingAction contract from useAuthStore — only the visual and gesture
+// layer changed. Mounted once at the true root (App.tsx), not scoped to AppShell, so it's
+// available on every route (spec: "always available" Auth Overlay).
 //
 // Backend reality check: auth.service.ts only ever exposes email/password
 // register+login (see CLAUDE.md's Auth section) — there is no phone/OTP endpoint to call. The
@@ -73,10 +66,10 @@ function handleSocialPlaceholder(provider: 'Google' | 'Apple') {
 // real, working email/password step underneath, so a guest who lands here can still actually
 // log in. The Google/Apple tiles are the same kind of honest placeholder the old AuthModal.tsx
 // already had for its own social buttons.
-export function AuthBottomSheet({ onAuthenticated }: AuthBottomSheetProps) {
+export function AuthBottomSheet() {
   const isOpen = useAuthStore((state) => state.isAuthModalOpen);
   const closeAuthModal = useAuthStore((state) => state.closeAuthModal);
-  const consumeAttemptedAction = useAuthStore((state) => state.consumeAttemptedAction);
+  const consumePendingAction = useAuthStore((state) => state.consumePendingAction);
 
   const [phone, setPhone] = useState('');
   const [showEmailStep, setShowEmailStep] = useState(false);
@@ -133,9 +126,9 @@ export function AuthBottomSheet({ onAuthenticated }: AuthBottomSheetProps) {
     }
     await login.mutateAsync({ email, password });
 
-    const action = consumeAttemptedAction();
+    const pendingAction = consumePendingAction();
     closeAuthModal();
-    onAuthenticated?.(action);
+    pendingAction?.();
   };
 
   // Flow 2: a fast/far-enough downward drag counts as an explicit dismiss; anything short of
@@ -307,3 +300,7 @@ export function AuthBottomSheet({ onAuthenticated }: AuthBottomSheetProps) {
     </AnimatePresence>
   );
 }
+
+// Also exported as default so App.tsx can lazy-load it with the same asyncComponent() helper
+// every other route already uses — that helper's loader type expects a `default` export.
+export default AuthBottomSheet;

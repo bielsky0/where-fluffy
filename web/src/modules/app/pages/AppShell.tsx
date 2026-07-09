@@ -2,9 +2,8 @@ import { usePetMapStore } from '@/modules/pets/store/usePetMapStore';
 import { AddListingWizard } from '@/modules/pets/components/add-listing-wizard';
 import { MapExplorerPage } from '@/modules/pets/pages/MapExplorerPage';
 import ProfilePage from '@/modules/profile/pages/ProfilePage';
-import { AuthBottomSheet } from '@/modules/auth/components/AuthBottomSheet';
-import { useAuthStore, type AttemptedAction } from '@/modules/auth/store/useAuthStore';
-import { useSessionStore } from '@/modules/auth/store/useSessionStore';
+import { useAuthStore } from '@/modules/auth/store/useAuthStore';
+import { useProtectedAction } from '@/modules/auth/hooks/useProtectedAction';
 import { useAppUIStore } from '@/modules/app/store/useAppUIStore';
 import { BottomNav, type NavAction } from '@/modules/app/components/BottomNav';
 import { GuestTabBar, type GuestNavAction } from '@/modules/app/components/GuestTabBar';
@@ -30,8 +29,10 @@ type ActionId = NavAction;
 //   - AddListingWizard — a modal overlay, not tied to either page's own layout; only ever open
 //     as a result of a session-gated tab (BottomNav's "Zgłoś" via runGatedAction, or
 //     GuestTabBar's "Dodaj" via runGuestAction), so "gated by auth" is enforced at the point
-//     it's opened, not by conditionally mounting the modal itself.
-//   - AuthBottomSheet — the same login gate every gated action (from either bar) shares.
+//     it's opened (via useProtectedAction), not by conditionally mounting the modal itself.
+//   - AuthBottomSheet itself is no longer mounted here — it lives at the true root (App.tsx) so
+//     it's available on every route, not just this one; this file only ever triggers it
+//     indirectly, via useProtectedAction's openAuthModal call.
 //
 // Note on file layout: MainFeedPage stays under modules/app/pages/ rather than moving into
 // modules/landing/ — that module is the public, pre-login marketing page (routes.tsx keeps its
@@ -62,8 +63,8 @@ export default function AppShell() {
 
   const isBottomNavHidden = currentAppState === 'STATE_C' && sheetSnap === 'collapsed';
 
-  const currentUser = useSessionStore((state) => state.currentUser);
-  const requestAuth = useAuthStore((state) => state.requestAuth);
+  const currentUser = useAuthStore((state) => state.currentUser);
+  const runProtected = useProtectedAction();
 
   const isAddReportOpen = usePetMapStore((state) => state.isAddReportModalOpen);
 
@@ -89,30 +90,20 @@ export default function AppShell() {
     }
   };
 
-  const runGatedAction = (action: ActionId) => {
-    if (!currentUser) {
-      requestAuth({ id: action });
-      return;
-    }
-    runAction(action);
-  };
+  const runGatedAction = (action: ActionId) => runProtected(() => runAction(action));
 
   // GuestTabBar's own action set (see that file) — 'discover' is the one tab that needs no
   // session at all (same intent as BottomNav's 'list'), so it runs directly; 'add' and 'login'
-  // both exist only to reach a session, so both simply request one, differing only in which
-  // action (if any) resumes once AuthBottomSheet succeeds — 'add' resumes into AddListingWizard
-  // the same way BottomNav's gated 'report' tab would, 'login' has nothing to resume into
-  // beyond landing on the feed, which is what runAction('list') already does.
+  // both exist only to reach a session, so both simply request one via useProtectedAction,
+  // differing only in which action resumes once AuthBottomSheet succeeds — 'add' resumes into
+  // AddListingWizard the same way BottomNav's gated 'report' tab would, 'login' has nothing to
+  // resume into beyond landing on the feed, which is what runAction('list') already does.
   const runGuestAction = (action: GuestNavAction) => {
     if (action === 'discover') {
       runAction('list');
       return;
     }
-    requestAuth({ id: action === 'add' ? 'report' : 'list' });
-  };
-
-  const handleAuthenticated = (attemptedAction: AttemptedAction | null) => {
-    if (attemptedAction) runAction(attemptedAction.id as ActionId);
+    runProtected(() => runAction(action === 'add' ? 'report' : 'list'));
   };
 
   const activeAction: NavAction | undefined =
@@ -134,7 +125,6 @@ export default function AppShell() {
       )}
 
       {isAddReportOpen && <AddListingWizard onClose={closeAddReport} />}
-      <AuthBottomSheet onAuthenticated={handleAuthenticated} />
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
+import { defaultShouldDehydrateQuery } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import { queryClient } from '@/lib/queryClient';
+import { AUTH_ME_QUERY_KEY } from '@/modules/auth/api/useAuth';
 
 interface AppProvidersProps {
   children: ReactNode;
@@ -26,7 +28,21 @@ const persister = createAsyncStoragePersister({
 // offline survives a reload/PWA relaunch, then calls `resumePausedMutations()` once rehydrated.
 export function AppProviders({ children }: AppProvidersProps) {
   return (
-    <PersistQueryClientProvider client={queryClient} persistOptions={{ persister }}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        dehydrateOptions: {
+          // The /auth/me query (api/useAuth.ts's useMe, staleTime: Infinity) must never be
+          // persisted to localStorage: it's rehydrated as instantly "fresh", so a persisted
+          // value would be trusted forever instead of ever re-asking the server — silently
+          // reintroducing the "trust a local flag, not the httpOnly cookie" bug this store
+          // redesign exists to fix (see SessionBootstrap.tsx / useAuthStore.ts).
+          shouldDehydrateQuery: (query) =>
+            query.queryKey[0] !== AUTH_ME_QUERY_KEY[0] && defaultShouldDehydrateQuery(query),
+        },
+      }}
+    >
       {children}
     </PersistQueryClientProvider>
   );

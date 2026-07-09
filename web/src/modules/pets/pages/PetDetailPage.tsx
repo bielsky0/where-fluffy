@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useProtectedAction } from '@/modules/auth/hooks/useProtectedAction';
 import { usePets } from '../api/usePets';
 import { useCreateSighting, useSightings } from '../api/useSightings';
 import { DEFAULT_CENTER } from '../lib/geo';
@@ -236,6 +237,7 @@ function LocationMapWidget({ pet }: { pet: Pet }) {
 export default function PetDetailPage() {
   const { petId } = useParams<{ petId: string }>();
   const navigate = useNavigate();
+  const runProtected = useProtectedAction();
 
   // There is no GET /pets/:id endpoint (only /pets/nearby, see CLAUDE.md) — this reuses the
   // same nearby query MainFeedPage already runs (same params, so the same TanStack Query
@@ -268,7 +270,13 @@ export default function PetDetailPage() {
   // joinChatRoom) — finderId isn't resolvable from a Pet alone (no owner/finder identity is
   // exposed on PetResponseDTO), so this opens the chat list rather than faking a join into a
   // room that doesn't exist yet.
-  const handleContact = () => navigate('/app/chat');
+  //
+  // Routed through useProtectedAction rather than calling navigate() directly: /app/chat assumes
+  // a session (see RequireAuth in routes.tsx), so a logged-out click must not change the URL at
+  // all — it stashes the navigation as pendingAction and opens AuthBottomSheet, which only fires
+  // it after a real login succeeds. Navigating first and letting RequireAuth catch the missing
+  // session after the fact was the actual bug being fixed here.
+  const handleContact = () => runProtected(() => navigate('/app/chat'));
 
   if (isLoading) {
     return (

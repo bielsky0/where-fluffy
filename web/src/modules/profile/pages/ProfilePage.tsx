@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { useSessionStore } from '@/modules/auth/store/useSessionStore';
+import { useAuthStore } from '@/modules/auth/store/useAuthStore';
 import { useLogout } from '@/modules/auth/api/useAuth';
 import { useAppUIStore } from '@/modules/app/store/useAppUIStore';
 import {
@@ -107,7 +107,7 @@ function ArchiveThumbnail({ speciesLabel }: { speciesLabel: string }) {
 // BottomNav's "Profil" tab, which is auth-gated (AppShell.tsx's runGatedAction), so `currentUser`
 // is always set by the time this mounts.
 export default function ProfilePage() {
-  const currentUser = useSessionStore((state) => state.currentUser);
+  const currentUser = useAuthStore((state) => state.currentUser);
   const resetToMain = useAppUIStore((state) => state.resetToMain);
   const logout = useLogout();
 

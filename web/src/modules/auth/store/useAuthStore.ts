@@ -1,31 +1,40 @@
 import { create } from 'zustand';
+import type { User } from '../types/auth.types';
 
-// Deliberately opaque — this store only knows "something was attempted", not what. It has an
-// `id` the caller defines and re-interprets after login (see AppShell.tsx's `ActionId`), which
-// keeps modules/auth from needing to know anything about pets/map/sighting concepts.
-export interface AttemptedAction {
-  id: string;
-}
-
-interface AuthUiState {
+interface AuthState {
+  // Mirrors the result of GET /auth/me (see api/useAuth.ts's useMe / components/SessionBootstrap.tsx)
+  // — this store never talks to the network itself and is never persisted (no localStorage/
+  // sessionStorage), per the app's zero-persistence rule for session state. `currentUser`/
+  // `isLoading` have exactly one writer: SessionBootstrap's effect, syncing whatever the /auth/me
+  // query currently reports.
+  currentUser: User | null;
+  isLoading: boolean;
+  // UI-only state for the deferred-auth flow: whether AuthBottomSheet is showing, and which
+  // action (if any) should run automatically once login succeeds.
   isAuthModalOpen: boolean;
-  attemptedAction: AttemptedAction | null;
-  requestAuth: (action: AttemptedAction) => void;
+  pendingAction: (() => void) | null;
+
+  setSession: (user: User | null, isLoading: boolean) => void;
+  openAuthModal: (pendingAction?: () => void) => void;
   closeAuthModal: () => void;
-  consumeAttemptedAction: () => AttemptedAction | null;
+  consumePendingAction: () => (() => void) | null;
 }
 
-// UI-only state for the deferred-auth flow: whether AuthBottomSheet is showing, and which gated
-// action (if any) triggered it, so the caller can resume that exact action once login
-// succeeds. Never touches the network or holds the actual user — that's useSessionStore's job.
-export const useAuthStore = create<AuthUiState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
+  currentUser: null,
+  isLoading: true,
   isAuthModalOpen: false,
-  attemptedAction: null,
-  requestAuth: (action) => set({ isAuthModalOpen: true, attemptedAction: action }),
+  pendingAction: null,
+
+  setSession: (user, isLoading) => set({ currentUser: user, isLoading }),
+
+  openAuthModal: (pendingAction) => set({ isAuthModalOpen: true, pendingAction: pendingAction ?? null }),
+
   closeAuthModal: () => set({ isAuthModalOpen: false }),
-  consumeAttemptedAction: () => {
-    const action = get().attemptedAction;
-    set({ attemptedAction: null });
+
+  consumePendingAction: () => {
+    const action = get().pendingAction;
+    set({ pendingAction: null });
     return action;
   },
 }));

@@ -18,8 +18,9 @@ function getInitialTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-// Single source of truth for light/dark: persisted like useSessionStore/usePetFilterStore, but
-// also has the side effect of toggling the `.dark` class on <html> — every color in
+// Single source of truth for light/dark: persisted like usePetFilterStore (unlike useAuthStore,
+// which deliberately never persists session state — see that file), but also has the side
+// effect of toggling the `.dark` class on <html> — every color in
 // tailwind.config.ts is defined against CSS vars that `.dark` overrides (see globals.css), so
 // this class is the only thing that actually needs to change for the whole app to re-theme.
 // Call useThemeStore.getState().theme once at startup (see main.tsx) to apply the persisted/

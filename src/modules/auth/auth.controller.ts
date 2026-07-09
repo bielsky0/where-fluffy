@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js';
 import { AuthService } from './auth.service.js';
 import { LoginDTO } from './dto/login.dto.js';
 import { RegisterDTO } from './dto/register.dto.js';
@@ -7,6 +8,7 @@ export type AuthController = {
   registerUser: (req: Request, res: Response) => Promise<void>;
   loginUser: (req: Request, res: Response) => Promise<void>;
   logoutUser: (req: Request, res: Response) => Promise<void>;
+  getMe: (req: AuthenticatedRequest, res: Response) => Promise<void>;
 };
 
 export const createAuthController = (authService: AuthService): AuthController => {
@@ -42,5 +44,11 @@ export const createAuthController = (authService: AuthService): AuthController =
     res.status(200).json({ status: 'success', message: 'Logged out successfully' });
   };
 
-  return { registerUser, loginUser, logoutUser };
+  // Przeszliśmy przez middleware `authenticate`, więc req.user na 100% istnieje — nie ma
+  // potrzeby dodatkowego zapytania do bazy, payload z JWT wystarcza (patrz auth.middleware.ts).
+  const getMe = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    res.status(200).json({ user: req.user });
+  };
+
+  return { registerUser, loginUser, logoutUser, getMe };
 };

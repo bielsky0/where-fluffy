@@ -1,5 +1,10 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { asyncComponent } from '@/app/asyncComponents';
+// Fine to import eagerly despite the "no lazy route may import modules/auth" rule below — that
+// rule is about keeping heavy deps (framer-motion, socket.io) out of the lazy page chunks
+// themselves. RequireAuth only touches useAuthStore (zustand, negligible weight) and is already
+// unavoidable at this level: App.tsx eagerly mounts SessionBootstrap for the same reason.
+import { RequireAuth } from '@/modules/auth/components/RequireAuth';
 
 // Public side — no lazy-loaded route here may import from modules/pets, modules/chat, or
 // modules/auth: keeping this import graph separate is what keeps the landing bundle free of
@@ -27,6 +32,13 @@ export const router = createBrowserRouter([
   { path: '/', element: <LandingPage /> },
   { path: '/login', element: <LoginPage /> },
   { path: '/app', element: <AppShell /> },
-  { path: '/app/chat', element: <ChatPage /> },
+  {
+    path: '/app/chat',
+    element: (
+      <RequireAuth>
+        <ChatPage />
+      </RequireAuth>
+    ),
+  },
   { path: '/app/pets/:petId', element: <PetDetailPage /> },
 ]);

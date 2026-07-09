@@ -1,14 +1,25 @@
-import express, { Express } from 'express';
+import express, { Express, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { createAuthService } from './auth.service.js';
 import { createAuthController } from './auth.controller.js';
 import { AuthRepository, PasswordHasher, TokenService } from './interface/auth.interface.js';
+import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 import { errorHandler } from '../../shared/middleware/error.middleware.js';
 import { validate } from '../../shared/middleware/validate.js';
 import { loginSchema, registerSchema } from './auth.schema.js';
 import { buildMockHasher, buildMockRepository, buildMockTokenService, buildUser } from './auth.test-helpers.js';
+
+// Prawdziwe `authenticate` middleware wymaga poprawnego JWT w cookie (własna suita poza zakresem
+// tego pliku — patrz auth.middleware.ts), więc dla /auth/me wstrzykujemy req.user bezpośrednio,
+// tak jak zrobiłby to `authenticate` po udanej weryfikacji tokenu. Ten sam wzorzec co w
+// comments.controller.spec.ts.
+const fakeAuthenticate =
+  (userId: string) => (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
+    req.user = { id: userId, email: 'jane@example.com', name: 'Jane Doe' };
+    next();
+  };
 
 // Minimalna, samodzielna apka Express — tylko trasy auth, żeby test nie zależał od
 // pets/chat/Redis. Serwis jest prawdziwy (createAuthService), ale zbudowany na mockowanych
@@ -27,6 +38,7 @@ const buildTestApp = (repository: AuthRepository, hasher: PasswordHasher, tokenS
   app.post('/auth/register', validate(registerSchema), asyncHandler(controller.registerUser));
   app.post('/auth/login', validate(loginSchema), asyncHandler(controller.loginUser));
   app.post('/auth/logout', asyncHandler(controller.logoutUser));
+  app.get('/auth/me', fakeAuthenticate('user-1'), asyncHandler(controller.getMe));
 
   app.use(errorHandler);
   return app;
@@ -158,6 +170,17 @@ describe('auth controller (via supertest)', () => {
       const tokenCookie = setCookieHeader.find((cookie) => cookie.startsWith('token='));
       expect(tokenCookie).toBeDefined();
       expect(tokenCookie).toMatch(/token=;/);
+    });
+  });
+
+  describe('GET /auth/me', () => {
+    it('returns 200 and the user carried on req.user by the auth middleware', async () => {
+      const response = await request(app).get('/auth/me');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        user: { id: 'user-1', email: 'jane@example.com', name: 'Jane Doe' },
+      });
     });
   });
 });

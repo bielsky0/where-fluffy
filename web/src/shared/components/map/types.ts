@@ -37,4 +37,16 @@ export interface MapProps {
   // `center` on mount (see providers/LeafletMap.tsx), so panning to a newly-selected pet (e.g.
   // tapping a card in the results drawer) has to go through this instead of just changing `center`.
   focusCenter?: Coordinate | null;
+  // Opt-in "drag map, read where it settled" hook — fires once per user pan, after the map
+  // stops moving (Leaflet's `moveend`), with the map's current center. Added for the add-listing
+  // wizard's map-pinning step (a fixed center-screen pin, map moves underneath it), which needs
+  // exactly the center Leaflet itself is tracking rather than duplicating that state. Left
+  // undefined by any caller that doesn't need it — see providers/LeafletMap.tsx's CenterTracker.
+  onCenterChange?: (center: Coordinate) => void;
+  // Opt-in "panning just started" hook (Leaflet's `movestart`), fired once per gesture before
+  // the map actually moves. Added alongside `onCenterChange` for the add-listing wizard's map
+  // pin (StepMapPin.tsx), which lifts/bounces the fixed center pin while the user is actively
+  // dragging and settles it back down on `onCenterChange`'s `moveend`. Left undefined by any
+  // caller that doesn't need it.
+  onMoveStart?: () => void;
 }

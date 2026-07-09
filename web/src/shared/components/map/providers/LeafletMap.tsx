@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, Marker, TileLayer, useMap, useMapEvent } from 'react-leaflet';
 import { divIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Coordinate, MapMarkerProps, MapProps } from '../types';
@@ -53,10 +53,37 @@ function FlyToFocus({ target }: { target: Coordinate | null | undefined }) {
   return null;
 }
 
+// Reports the map's own center once panning settles, for callers that opted into
+// `onCenterChange` (see ../types.ts). `moveend` (not `move`) so this fires once per gesture
+// rather than on every intermediate frame.
+function CenterTracker({ onCenterChange }: { onCenterChange: MapProps['onCenterChange'] }) {
+  useMapEvent('moveend', (event) => {
+    const center = event.target.getCenter();
+    onCenterChange?.({ lat: center.lat, lng: center.lng });
+  });
+  return null;
+}
+
+// Reports the moment a pan gesture begins, for callers that opted into `onMoveStart` (see
+// ../types.ts) — paired with CenterTracker's `moveend` above.
+function MoveStartTracker({ onMoveStart }: { onMoveStart: MapProps['onMoveStart'] }) {
+  useMapEvent('movestart', () => onMoveStart?.());
+  return null;
+}
+
 // react-leaflet implementation of the `<Map />` facade (see ../Map.tsx). This is the only
 // file in the app allowed to import from `react-leaflet`/`leaflet` — everything else goes
 // through the provider-agnostic `MapProps`/`MapMarkerProps` in ../types.ts.
-export function LeafletMap({ center, zoom = 13, markers = [], className, style, focusCenter }: MapProps) {
+export function LeafletMap({
+  center,
+  zoom = 13,
+  markers = [],
+  className,
+  style,
+  focusCenter,
+  onCenterChange,
+  onMoveStart,
+}: MapProps) {
   return (
     <MapContainer
       center={[center.lat, center.lng]}
@@ -69,6 +96,8 @@ export function LeafletMap({ center, zoom = 13, markers = [], className, style, 
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <FlyToFocus target={focusCenter} />
+      {onCenterChange && <CenterTracker onCenterChange={onCenterChange} />}
+      {onMoveStart && <MoveStartTracker onMoveStart={onMoveStart} />}
       {markers.map((marker) => (
         <Marker
           key={marker.id}

@@ -25,7 +25,7 @@ export interface NearbyPetsQuery {
 // Matches CreatePetDTO (src/modules/pets/dto/create-pet.dto.ts) minus `ownerId` — the backend
 // derives that from the authenticated request, not the client. Note there is only a "report
 // missing" endpoint (`pets.service.ts`'s `reportMissingPet`) — there is no way to create a
-// pet record with status 'found'; see AddReportModal.tsx for how that gap is surfaced in the UI.
+// pet record with status 'found'; see add-listing-wizard/StepFork.tsx for how that gap is surfaced in the UI.
 export interface CreatePetReportPayload {
   name: string;
   species: string;

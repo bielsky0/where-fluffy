@@ -22,7 +22,7 @@ export function usePets(query: NearbyPetsQuery) {
 // POST /pets (auth-required) — src/modules/pets/pets.service.ts's `reportMissingPet`. Like
 // useSightings' create mutation, this inherits `networkMode: 'offlineFirst'` from the
 // QueryClient defaults, so an "Add Report" submitted while offline queues instead of failing
-// (see AddReportModal.tsx / providers/AppProviders.tsx).
+// (see add-listing-wizard/AddListingWizard.tsx / providers/AppProviders.tsx).
 export function useCreatePetReport() {
   const queryClient = useQueryClient();
 

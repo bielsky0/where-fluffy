@@ -68,7 +68,7 @@ function handleSocialPlaceholder(provider: 'Google' | 'Apple') {
 // phone field below is still built exactly to spec (front-and-center, native numeric/phone
 // keyboard, "Dalej" CTA) since that's the requested first impression, but submitting it can't
 // actually authenticate anyone yet. Rather than fake a success (this codebase's established
-// precedent — see AddReportModal.tsx's disabled "Found" tab, LoginPage.tsx's disabled Google
+// precedent — see add-listing-wizard/StepFork.tsx's disabled "Znalazłem" tile, LoginPage.tsx's disabled Google
 // button — is to say so plainly instead of pretending), "Dalej" surfaces a toast and reveals a
 // real, working email/password step underneath, so a guest who lands here can still actually
 // log in. The Google/Apple tiles are the same kind of honest placeholder the old AuthModal.tsx

@@ -22,7 +22,7 @@ export interface LocationFilter {
   label: string;
   // Only set via a Card 2 suggestion tap ("W pobliżu" or a recent search — SearchModal.tsx's
   // selectDraftLocation) — free-typed text has nowhere to be geocoded against (no geocoding
-  // endpoint on the backend, see AddReportModal.tsx's "Found" tab for the same "don't fake a
+  // endpoint on the backend, see add-listing-wizard/StepFork.tsx's disabled "Znalazłem" tile for the same "don't fake a
   // capability we don't have" precedent), so it's kept purely as a display label until coords
   // exist.
   coords: { lat: number; lng: number } | null;

@@ -28,7 +28,7 @@ const CORAL = '#FF6B4A';
 // No backend endpoint returns search history (or does geocoding at all — see
 // useAppUIStore.ts's LocationFilter comment), so these are fixed placeholder suggestions
 // standing in for "local recommendations", the same "don't fake a capability we don't have"
-// stance already taken by AddReportModal.tsx's disabled "Found" tab.
+// stance already taken by add-listing-wizard/StepFork.tsx's disabled "Znalazłem" tile.
 interface DestinationSuggestion {
   label: string;
   subtitle: string;

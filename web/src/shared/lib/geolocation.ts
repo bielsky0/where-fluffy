@@ -1,6 +1,7 @@
-// Shared by AddReportModal.tsx (pinning a new report to the reporter's position) and
-// SearchModal.tsx (the "Use current location" search filter) — same browser API call, same
-// promise wrapper, no reason for either to hand-roll its own.
+// Used by SearchModal.tsx (the "Use current location" search filter) — kept as its own module
+// rather than inlined there in case a future caller needs the same browser API call/promise
+// wrapper (the add-listing wizard doesn't: StepMapPin.tsx pins location by dragging the map
+// instead of prompting for device geolocation).
 export function getCurrentPosition(): Promise<{ lat: number; lng: number }> {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(

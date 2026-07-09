@@ -113,7 +113,7 @@ export function MainFeedPage() {
   // "Pilne w okolicy" surfaces active missing-pet reports, newest first — the closest thing
   // this app has to "urgent". "Ostatnio widziane" surfaces status: 'found' pets the same way.
   // Note: pets.service.ts only ever creates status: 'missing' records today (see CLAUDE.md /
-  // AddReportModal.tsx's disabled "Found" tab) — the second carousel legitimately renders
+  // add-listing-wizard/StepFork.tsx's disabled "Znalazłem" tile) — the second carousel legitimately renders
   // empty until that capability exists, it isn't a bug in this filter.
   const urgentPets = useMemo(
     () =>

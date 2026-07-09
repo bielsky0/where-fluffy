@@ -21,7 +21,7 @@ import { BOTTOM_NAV_CLEARANCE } from '@/modules/app/components/BottomNav';
 // (Pet.reward) — 'large'/'photo' have no backing data (PetResponseDTO has no size or photo
 // field, see PetCard.tsx's own comment on the placeholder image) so they toggle their pill's
 // selected style without narrowing `filteredPets`, the same "don't fake a capability we don't
-// have" stance already taken by AddReportModal.tsx's disabled "Found" tab.
+// have" stance already taken by add-listing-wizard/StepFork.tsx's disabled "Znalazłem" tile.
 const QUICK_PILLS = [
   { id: 'reward', label: 'Z nagrodą' },
   { id: 'large', label: 'Duże psy' },

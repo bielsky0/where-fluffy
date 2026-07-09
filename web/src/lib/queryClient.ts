@@ -10,7 +10,7 @@ export const queryClient = new QueryClient({
       // A mutation that fails because the device is offline gets *paused*, not errored, and
       // resumes automatically once back online — combined with the persister in
       // providers/AppProviders.tsx, this is the "background sync" mechanism behind
-      // AddReportModal.tsx / PetDetailPanel.tsx's add-sighting form (see that file's comment
+      // AddListingWizard.tsx / PetDetailPanel.tsx's add-sighting form (see that file's comment
       // for why we use this instead of the browser's own Background Sync API).
       //
       // `retry` must be > 0 here: TanStack Query only checks online status (and pauses) when

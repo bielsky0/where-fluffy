@@ -258,7 +258,8 @@ export default function PetDetailPage() {
     if (!sightingDescription.trim()) return;
     // `type: 'general'` — a plain log entry, no GPS pin required. A "sighted at this exact
     // spot" entry (type: 'sighted') needs location, which this quick compose form doesn't
-    // collect (see AddReportModal.tsx for the geolocation-prompt pattern that would apply).
+    // collect (see add-listing-wizard/StepMapPin.tsx for the map-drag location-pinning pattern
+    // that would apply).
     await createSighting.mutateAsync({ description: sightingDescription.trim(), type: 'general' });
     setSightingDescription('');
   };

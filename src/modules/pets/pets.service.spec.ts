@@ -6,6 +6,7 @@ const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
   id: 'pet-1',
   name: 'Rex',
   species: 'dog',
+  category: 'dog',
   location: { lat: 52.2297, lng: 21.0122 },
   ownerId: 'owner-1',
   status: 'missing',
@@ -36,7 +37,7 @@ describe('createPetsService', () => {
   });
 
   describe('reportMissingPet', () => {
-    it('passes the exact DTO through to repository.save', async () => {
+    it('passes the DTO through to repository.save with a server-computed category', async () => {
       const dto = buildCreateDto();
       mockRepository.save.mockResolvedValue(buildPet());
       const service = createPetsService(mockRepository);
@@ -44,7 +45,17 @@ describe('createPetsService', () => {
       await service.reportMissingPet(dto);
 
       expect(mockRepository.save).toHaveBeenCalledTimes(1);
-      expect(mockRepository.save).toHaveBeenCalledWith(dto);
+      expect(mockRepository.save).toHaveBeenCalledWith({ ...dto, category: 'dog' });
+    });
+
+    it('categorizes the pet from its species before saving', async () => {
+      const dto = buildCreateDto({ species: 'Kot europejski' });
+      mockRepository.save.mockResolvedValue(buildPet({ category: 'cat' }));
+      const service = createPetsService(mockRepository);
+
+      await service.reportMissingPet(dto);
+
+      expect(mockRepository.save).toHaveBeenCalledWith({ ...dto, category: 'cat' });
     });
 
     it('maps the saved domain pet into a PetResponseDTO', async () => {
@@ -58,6 +69,7 @@ describe('createPetsService', () => {
         id: 'pet-99',
         name: savedPet.name,
         species: savedPet.species,
+        category: savedPet.category,
         status: savedPet.status,
         reward: 250,
         location: savedPet.location,
@@ -87,6 +99,7 @@ describe('createPetsService', () => {
           id: 'pet-2',
           name: nearbyPet.name,
           species: nearbyPet.species,
+          category: nearbyPet.category,
           status: nearbyPet.status,
           reward: nearbyPet.reward,
           location: nearbyPet.location,

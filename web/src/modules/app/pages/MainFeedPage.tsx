@@ -1,12 +1,13 @@
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Coordinate } from '@/shared/components/map/types';
 import { cn } from '@/shared/lib/cn';
 import { PetCard } from '@/modules/pets/components/PetCard';
-import { usePets } from '@/modules/pets/api/usePets';
-import { matchesPetType, type PetTypeFilter } from '@/modules/pets/lib/petType';
-import { DEFAULT_CENTER } from '@/modules/pets/lib/geo';
+import type { PetTypeFilter } from '@/modules/pets/lib/petType';
 import type { Pet } from '@/modules/pets/types/pet.types';
+import { useAppLocation } from '@/modules/location/api/useAppLocation';
+import { useUrgentFeed } from '@/modules/feed/api/useUrgentFeed';
+import { FeedList } from '@/modules/feed/components/FeedList';
 import { useAppUIStore } from '../store/useAppUIStore';
 import { BOTTOM_NAV_CLEARANCE } from '../components/BottomNav';
 
@@ -88,47 +89,35 @@ function CardCarousel({
 // The main "Airbnb style" landing view — a clean vertical feed, no map anywhere in it. Fully
 // self-sufficient (own data fetching, own store wiring, zero props) — same pattern already
 // used by SearchModal.tsx/AuthBottomSheet.tsx elsewhere in this app, so AppShell.tsx can mount it
-// with no prop drilling. Its usePets query is entirely independent of MapExplorerPage's (see
-// geo.ts) — browsing the feed never triggers, and never depends on, anything the map/search
-// wizard has done, and vice versa; only one of the two pages is ever mounted at a time (see
-// AppShell.tsx's activeView switch), so there's never a duplicate in-flight fetch either.
+// with no prop drilling. Its queries are entirely independent of MapExplorerPage's — browsing
+// the feed never triggers, and never depends on, anything the map/search wizard has done, and
+// vice versa; only one of the two pages is ever mounted at a time (see AppShell.tsx's activeView
+// switch), so there's never a duplicate in-flight fetch either.
+//
+// "Marketplace pattern" hybrid: "Pilne w okolicy" stays a simple, non-paginated horizontal
+// carousel (server-capped at 10, see useUrgentFeed) — it's a handful of the freshest/closest
+// reports, not something that benefits from infinite scroll. "Wszystkie ogłoszenia" below it is
+// the real infinite-scroll machine (cursor pagination + IntersectionObserver + virtualization,
+// see FeedList) and shows both missing/found pets with a status badge, not just one status.
 export function MainFeedPage() {
   const navigate = useNavigate();
   const openSearch = useAppUIStore((state) => state.openSearch);
   const showAllResults = useAppUIStore((state) => state.showAllResults);
 
-  const origin = DEFAULT_CENTER;
-  const { data: pets, isLoading, isError } = usePets({ ...origin, radius: 5000 });
-
+  const { origin } = useAppLocation();
+  // Backend category filtering only knows 'dog'|'cat'|'other' — 'all' means "omit the param".
   const [category, setCategory] = useState<FeedCategory>('all');
+  const apiCategory: PetTypeFilter | undefined = category === 'all' ? undefined : category;
+
+  const { data: urgentPets, isLoading: isUrgentLoading, isError: isUrgentError } = useUrgentFeed({
+    ...origin,
+    radius: 5000,
+    category: apiCategory,
+  });
+
   const [headerHidden, setHeaderHidden] = useState(false);
   const lastScrollTop = useRef(0);
-
-  const categoryFilteredPets = useMemo(() => {
-    if (!pets) return [];
-    const petType = category === 'all' ? null : category;
-    return pets.filter((pet) => matchesPetType(pet, petType));
-  }, [pets, category]);
-
-  // "Pilne w okolicy" surfaces active missing-pet reports, newest first — the closest thing
-  // this app has to "urgent". "Ostatnio widziane" surfaces status: 'found' pets the same way.
-  // Note: pets.service.ts only ever creates status: 'missing' records today (see CLAUDE.md /
-  // add-listing-wizard/StepFork.tsx's disabled "Znalazłem" tile) — the second carousel legitimately renders
-  // empty until that capability exists, it isn't a bug in this filter.
-  const urgentPets = useMemo(
-    () =>
-      categoryFilteredPets
-        .filter((pet) => pet.status === 'missing')
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [categoryFilteredPets],
-  );
-  const recentlySeenPets = useMemo(
-    () =>
-      categoryFilteredPets
-        .filter((pet) => pet.status === 'found')
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [categoryFilteredPets],
-  );
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Navigates straight to PetDetailPage's own full-screen route — same "go look at this one
   // pet" intent as PetResultsList.tsx's card tap, and deliberately the same choice: not
@@ -198,37 +187,39 @@ export function MainFeedPage() {
       </header>
 
       <div
+        ref={scrollContainerRef}
         onScroll={handleScroll}
         className="h-full overflow-y-auto pt-[8.5rem]"
         style={{ paddingBottom: BOTTOM_NAV_CLEARANCE }}
       >
-        {isLoading && <p className="px-4 py-8 text-center text-sm text-neutral-400">Ładowanie…</p>}
-        {isError && (
+        {isUrgentLoading && <p className="px-4 py-8 text-center text-sm text-neutral-400">Ładowanie…</p>}
+        {isUrgentError && (
           <p className="px-4 py-8 text-center text-sm text-red-600">Nie udało się wczytać zwierzaków w pobliżu.</p>
         )}
-
-        {!isLoading && !isError && (
-          <>
-            <CardCarousel
-              title="Pilne w okolicy"
-              pets={urgentPets}
-              origin={origin}
-              emptyLabel="Brak pilnych zgłoszeń w wybranej kategorii."
-              onSelectPet={handleSelectPet}
-              onMore={showAllResults}
-              scrollKey={category}
-            />
-            <CardCarousel
-              title="Ostatnio widziane"
-              pets={recentlySeenPets}
-              origin={origin}
-              emptyLabel="Brak niedawno widzianych zwierzaków w wybranej kategorii."
-              onSelectPet={handleSelectPet}
-              onMore={showAllResults}
-              scrollKey={category}
-            />
-          </>
+        {!isUrgentLoading && !isUrgentError && (
+          <CardCarousel
+            title="Pilne w okolicy"
+            pets={urgentPets ?? []}
+            origin={origin}
+            emptyLabel="Brak pilnych zgłoszeń w wybranej kategorii."
+            onSelectPet={handleSelectPet}
+            onMore={showAllResults}
+            scrollKey={category}
+          />
         )}
+
+        <section className="mb-8">
+          <div className="mb-3 flex items-center justify-between px-4">
+            <h2 className="text-xl font-extrabold tracking-tight text-black">Wszystkie ogłoszenia</h2>
+          </div>
+          <FeedList
+            key={category}
+            query={{ ...origin, radius: 5000, category: apiCategory }}
+            origin={origin}
+            scrollContainerRef={scrollContainerRef}
+            onSelectPet={handleSelectPet}
+          />
+        </section>
       </div>
     </div>
   );

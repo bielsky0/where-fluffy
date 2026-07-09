@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { DEFAULT_CENTER } from '../lib/geo';
+import { FALLBACK_ORIGIN } from '@/shared/config/geo.config';
 import type { PetTypeFilter } from '../lib/petType';
 import type { Coordinate } from '@/shared/components/map';
 
@@ -33,7 +33,7 @@ const INITIAL_DATA: AddListingWizardData = {
   photo: null,
   // Map starts centered on the same fallback origin as the rest of the app (MapExplorerPage,
   // MainFeedPage) until the user drags it — see StepMapPin.tsx.
-  location: DEFAULT_CENTER,
+  location: FALLBACK_ORIGIN,
   name: '',
   petType: null,
   description: '',

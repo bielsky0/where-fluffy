@@ -5,7 +5,7 @@ import { usePets } from '../api/usePets';
 import { usePetMapStore } from '../store/usePetMapStore';
 import { matchesPetType, PET_TYPE_LABELS_PLURAL } from '../lib/petType';
 import { matchesTimeframe, TIMEFRAME_LABELS } from '../lib/timeframe';
-import { DEFAULT_CENTER } from '../lib/geo';
+import { FALLBACK_ORIGIN } from '@/shared/config/geo.config';
 import { MapView } from '../components/MapView';
 import { BottomSheet } from '../components/BottomSheet';
 import { PetResultsList } from '../components/PetResultsList';
@@ -51,9 +51,9 @@ export function MapExplorerPage() {
   const resetToMain = useAppUIStore((state) => state.resetToMain);
 
   // Query center follows the map's own applied location filter — deliberately independent of
-  // MainFeedPage's usePets call (see geo.ts), so browsing the feed never depends on, or pays
+  // MainFeedPage's own location (useAppLocation), so browsing the feed never depends on, or pays
   // for, anything the map wizard has done.
-  const queryCenter = appliedFilters.location?.coords ?? DEFAULT_CENTER;
+  const queryCenter = appliedFilters.location?.coords ?? FALLBACK_ORIGIN;
   const { data: pets, isLoading, isError } = usePets({ ...queryCenter, radius: 5000 });
 
   const selectedPetId = usePetMapStore((state) => state.selectedPetId);
@@ -86,14 +86,7 @@ export function MapExplorerPage() {
 
   const selectedPet = filteredPets.find((pet) => pet.id === selectedPetId) ?? null;
 
-  // At the "half" snap, State 2 of the drawer spec shows exactly one full-sized card — slicing
-  // here (rather than having BottomSheet/PetResultsList know about snap) keeps the drawer and
-  // list components ignorant of how many results they're being handed for. "Collapsed" still
-  // renders the full list underneath (see BottomSheet.tsx) since it's clipped out of view
-  // there anyway, so slicing it too would only add a pointless flash when dragging past half.
-
   //TODO infinity scroll list
-  const visibleResultsPets = sheetSnap === 'half' ? filteredPets.slice(0, 1) : filteredPets;
 
   const resultsHeadline = appliedFilters.petType
     ? `${PET_TYPE_LABELS_PLURAL[appliedFilters.petType]} w okolicy`

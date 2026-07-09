@@ -50,6 +50,12 @@ services:
       # so it's visible as something to replace with a real secret (env/secrets manager) before
       # this ever runs anywhere but a laptop.
       JWT_SECRET: "super-secret-key-change-me"
+      # All have matching Zod defaults in shared/config/location.config.ts (same Warsaw
+      # coordinates) — set explicitly here for parity/visibility, not because they differ.
+      FALLBACK_LOCATION_LAT: "52.2297"
+      FALLBACK_LOCATION_LNG: "21.0122"
+      FALLBACK_LOCATION_CITY: "Warszawa"
+      GEOIP_DB_PATH: "./geoip/GeoLite2-City.mmdb"
     ports:
       - "3000:3000" # alternative to running `npm run dev` on the host — don't run both at once,
                      # they'd fight over this same host port.

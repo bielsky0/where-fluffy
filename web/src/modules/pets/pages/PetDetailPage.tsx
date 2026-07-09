@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useProtectedAction } from '@/modules/auth/hooks/useProtectedAction';
 import { usePets } from '../api/usePets';
 import { useCreateSighting, useSightings } from '../api/useSightings';
-import { DEFAULT_CENTER } from '../lib/geo';
+import { FALLBACK_ORIGIN } from '@/shared/config/geo.config';
 import { formatRelativeTime, formatTimelineTimestamp } from '../lib/format';
 import type { Pet, PetStatus } from '../types/pet.types';
 
@@ -243,7 +243,7 @@ export default function PetDetailPage() {
   // same nearby query MainFeedPage already runs (same params, so the same TanStack Query
   // cache entry) and finds the requested pet client-side, rather than inventing a single-pet
   // fetch the backend doesn't support.
-  const { data: pets, isLoading, isError } = usePets({ ...DEFAULT_CENTER, radius: 5000 });
+  const { data: pets, isLoading, isError } = usePets({ ...FALLBACK_ORIGIN, radius: 5000 });
   const pet = pets?.find((candidate) => candidate.id === petId) ?? null;
 
   const { data: sightings } = useSightings(petId);

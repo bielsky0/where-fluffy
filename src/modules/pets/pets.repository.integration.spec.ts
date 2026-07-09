@@ -5,7 +5,7 @@ import { PrismaClient, User } from '@prisma/client';
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { createPetRepository } from './pets.repository.js';
 import { PetRepository } from './interfaces/pets.interface.js';
-import { CreatePetDTO } from './dto/create-pet.dto.js';
+import { CreatePetRecordDTO } from './dto/create-pet.dto.js';
 
 jest.setTimeout(120_000);
 
@@ -64,9 +64,10 @@ describe('createPetRepository (integration)', () => {
     await container?.stop();
   });
 
-  const buildCreateDto = (overrides: Partial<CreatePetDTO> = {}): CreatePetDTO => ({
+  const buildCreateDto = (overrides: Partial<CreatePetRecordDTO> = {}): CreatePetRecordDTO => ({
     name: 'Rex',
     species: 'dog',
+    category: 'dog',
     location: CENTER,
     reward: 100,
     ownerId: owner.id,
@@ -78,8 +79,8 @@ describe('createPetRepository (integration)', () => {
   // bezpośrednio.
   const insertFoundPetDirectly = async (location: { lat: number; lng: number }) => {
     await prisma.$executeRaw`
-      INSERT INTO "Pet" (id, name, species, reward, "ownerId", status, location, "updatedAt")
-      VALUES (${randomUUID()}, 'Already Found', 'cat', 0, ${owner.id}, 'found',
+      INSERT INTO "Pet" (id, name, species, category, reward, "ownerId", status, location, "updatedAt")
+      VALUES (${randomUUID()}, 'Already Found', 'cat', 'cat', 0, ${owner.id}, 'found',
               ST_SetSRID(ST_MakePoint(${location.lng}, ${location.lat}), 4326)::geography, now())
     `;
   };
@@ -159,6 +160,25 @@ describe('createPetRepository (integration)', () => {
       const results = await repository.findNearLocation(CENTER.lat, CENTER.lng, 500);
 
       expect(results).toEqual([]);
+    });
+
+    it('filters by category when options.category is passed', async () => {
+      const dog = await repository.save(buildCreateDto({ location: NEAR, category: 'dog' }));
+      await repository.save(buildCreateDto({ location: NEAR, category: 'cat' }));
+
+      const results = await repository.findNearLocation(CENTER.lat, CENTER.lng, 5000, { category: 'dog' });
+
+      expect(results.map((p) => p.id)).toEqual([dog.id]);
+    });
+
+    it('caps the result count when options.limit is passed', async () => {
+      await repository.save(buildCreateDto({ location: NEAR }));
+      await repository.save(buildCreateDto({ location: NEAR }));
+      await repository.save(buildCreateDto({ location: NEAR }));
+
+      const results = await repository.findNearLocation(CENTER.lat, CENTER.lng, 5000, { limit: 2 });
+
+      expect(results).toHaveLength(2);
     });
   });
 });

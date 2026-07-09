@@ -20,6 +20,7 @@ export const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
   id: 'pet-1',
   name: 'Rex',
   species: 'dog',
+  category: 'dog',
   location: { lat: 52.2297, lng: 21.0122 },
   ownerId: 'owner-1',
   status: 'missing',

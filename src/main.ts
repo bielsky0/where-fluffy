@@ -9,6 +9,7 @@ import { initSocket } from './shared/infrastructure/socket.js';
 import { registerAllGateways } from './app.gateways.js';
 import { initRedis, redisClient } from './shared/infrastructure/redis.js';
 import { prisma } from './shared/prisma.js';
+import { locationRepository } from './modules/location/index.js';
 
 const PORT = process.env.PORT || 3000;
 
@@ -22,6 +23,11 @@ async function bootstrap() {
     // 1. Inicjalizacja klienta Redisa (dla logiki biznesowej)
     console.log('[BOOTSTRAP] Inicjalizacja Redis...');
     await initRedis();
+
+    // 1.5. Ładowanie bazy GeoIP do pamięci (moduł location) — nigdy nie rzuca (patrz Silent
+    // Fallback w location.repository.ts), więc brak pliku .mmdb w dev nie blokuje bootstrapu.
+    console.log('[BOOTSTRAP] Ładowanie bazy GeoIP...');
+    await locationRepository.init();
 
     // 2. Tworzenie dedykowanych klientów dla Adaptera Socket.io
     // Redis Adapter wymaga niezależnych połączeń (pub/sub)

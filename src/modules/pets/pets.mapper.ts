@@ -1,5 +1,6 @@
 import { PetResponseDTO } from './dto/pet-response.dto.js';
 import { IPet } from './interfaces/pets.interface.js';
+import { PetCategory } from './pets.category.js';
 
 // Typ pomocniczy dla bazy danych (odzwierciedla to, co zwraca PostGIS po ST_X/ST_Y)
 export type RawPetRow = {
@@ -7,6 +8,7 @@ export type RawPetRow = {
   name: string;
   species: string;
   status: string;
+  category: string;
   reward: number;
   ownerId: string;
   createdAt: Date;
@@ -20,6 +22,7 @@ export const mapToDomain = (row: RawPetRow): IPet => ({
   id: row.id,
   name: row.name,
   species: row.species,
+  category: row.category as PetCategory,
   status: row.status as 'missing' | 'found',
   reward: Number(row.reward),
   ownerId: row.ownerId,
@@ -33,6 +36,7 @@ export const mapToResponseDTO = (pet: IPet): PetResponseDTO => ({
   id: pet.id,
   name: pet.name,
   species: pet.species,
+  category: pet.category,
   status: pet.status,
   reward: Number(pet.reward),
   location: {

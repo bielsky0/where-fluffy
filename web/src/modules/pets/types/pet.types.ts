@@ -1,12 +1,15 @@
 // Mirrors the backend's PetResponseDTO (src/modules/pets/dto/pet-response.dto.ts). Duplicated
 // here rather than imported because shared-types/ (repo root) is still an empty placeholder —
 // once it's populated, both sides should import the DTO from there instead of hand-mirroring it.
+import type { PetTypeFilter } from '../lib/petType';
+
 export type PetStatus = 'missing' | 'found';
 
 export interface Pet {
   id: string;
   name: string;
   species: string;
+  category: PetTypeFilter;
   status: PetStatus;
   reward: number;
   location: {

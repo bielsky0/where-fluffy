@@ -30,20 +30,22 @@ model Pet {
   name      String
   species   String
   status    String   @default("LOST")
+  category  String   @default("other")
   reward    Int      @default(0) // Przywrócone pole reward
-  
+
   // Pole PostGIS
-  location  Unsupported("geography(Point, 4326)")? 
+  location  Unsupported("geography(Point, 4326)")?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   ownerId   String
   owner     User     @relation(fields: [ownerId], references: [id])
   comments  Comment[]
   chats     ChatRoom[]
 
   @@index([location], type: Gist)
+  @@index([category])
 }
 
 model Comment {

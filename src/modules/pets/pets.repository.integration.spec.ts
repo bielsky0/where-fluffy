@@ -72,6 +72,8 @@ describe('createPetRepository (integration)', () => {
     location: CENTER,
     reward: 100,
     phone: '600100200',
+    photoUrls: [],
+    city: null,
     ownerId: owner.id,
     ...overrides,
   });
@@ -111,6 +113,22 @@ describe('createPetRepository (integration)', () => {
       expect(pet.phone).toBe('111222333');
       expect(pet.distinguishingMarks).toBe('Biała łatka na łapie');
       expect(pet.photoUrl).toBe('data:image/jpeg;base64,AAA');
+    });
+
+    it('persists photoUrls and city', async () => {
+      const pet = await repository.save(
+        buildCreateDto({ photoUrls: ['https://example.test/rex-1.jpg', 'https://example.test/rex-2.jpg'], city: 'Kraków' }),
+      );
+
+      expect(pet.photoUrls).toEqual(['https://example.test/rex-1.jpg', 'https://example.test/rex-2.jpg']);
+      expect(pet.city).toBe('Kraków');
+    });
+
+    it('persists an empty photoUrls array and a null city when none are given', async () => {
+      const pet = await repository.save(buildCreateDto());
+
+      expect(pet.photoUrls).toEqual([]);
+      expect(pet.city).toBeNull();
     });
   });
 

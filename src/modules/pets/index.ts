@@ -3,8 +3,10 @@ import { createPetRepository } from './pets.repository.js';
 import { createPetsService } from './pets.service.js';
 import { createPetsController } from './pets.controller.js';
 import { createPhotoService } from '../../shared/photo/photo.service.js';
+import { createGeocodingService } from '../../shared/geocoding/geocoding.service.js';
 
 export const petsRepository = createPetRepository(prisma);
 export const photoService = createPhotoService();
-export const petsService = createPetsService(petsRepository, photoService);
+export const geocodingService = createGeocodingService();
+export const petsService = createPetsService(petsRepository, photoService, geocodingService);
 export const petsController = createPetsController(petsService);

@@ -13,6 +13,8 @@ export type RawPetRow = {
   phone: string | null;
   distinguishingMarks: string | null;
   photoUrl: string | null;
+  photoUrls: string[];
+  city: string | null;
   ownerId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +33,8 @@ export const mapToDomain = (row: RawPetRow): IPet => ({
   phone: row.phone,
   distinguishingMarks: row.distinguishingMarks,
   photoUrl: row.photoUrl,
+  photoUrls: row.photoUrls,
+  city: row.city,
   ownerId: row.ownerId,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -48,6 +52,8 @@ export const mapToResponseDTO = (pet: IPet): PetResponseDTO => ({
   phone: pet.phone,
   distinguishingMarks: pet.distinguishingMarks,
   photoUrl: pet.photoUrl,
+  photoUrls: pet.photoUrls,
+  city: pet.city,
   location: {
     lat: Number(pet.location.lat),
     lng: Number(pet.location.lng),

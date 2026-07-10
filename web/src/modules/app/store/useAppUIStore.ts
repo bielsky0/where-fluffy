@@ -75,6 +75,7 @@ interface AppUIState {
   showAllResults: () => void;
   resetToMain: () => void;
   showProfile: () => void;
+  openMapAt: (location: LocationFilter) => void;
 }
 
 // Drives the three top-level screen states described in AppShell.tsx (STATE_A: main map view,
@@ -187,4 +188,10 @@ export const useAppUIStore = create<AppUIState>((set, get) => ({
     }),
 
   showProfile: () => set({ activeView: 'profile' }),
+
+  // Entry point for "open the full map centered on this one pet" (e.g. PetDetailPage's
+  // mini-map tap) — lands straight on STATE_C (results view) with a single-location filter
+  // applied, same shape as applyFilters()'s result but skipping the wizard entirely.
+  openMapAt: (location) =>
+    set({ activeView: 'map', currentAppState: 'STATE_C', appliedFilters: { ...EMPTY_FILTERS, location } }),
 }));

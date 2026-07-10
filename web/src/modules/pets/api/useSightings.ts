@@ -25,10 +25,13 @@ function mapCommentToSighting(petId: string, comment: CommentResponseDTO): Sight
     description: comment.message,
     photoUrl: null,
     timestamp: comment.createdAt,
+    type: comment.type,
   };
 }
 
 // GET /pets/:petId/comments (src/modules/pets/pets.routes.ts) — public, no auth required.
+// Polled every 60s rather than pushed over WS — no gateway exists for comments/sightings today
+// (only chat has one), so this is the pragmatic way to keep the timeline reasonably live.
 export function useSightings(petId: string | undefined) {
   return useQuery({
     queryKey: ['pets', petId, 'sightings'],
@@ -37,6 +40,7 @@ export function useSightings(petId: string | undefined) {
       return comments.map((comment) => mapCommentToSighting(petId!, comment));
     },
     enabled: Boolean(petId),
+    refetchInterval: 60_000,
   });
 }
 

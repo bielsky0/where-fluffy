@@ -17,6 +17,8 @@ export interface IPet {
   phone: string | null;
   distinguishingMarks: string | null;
   photoUrl: string | null;
+  photoUrls: string[];
+  city: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

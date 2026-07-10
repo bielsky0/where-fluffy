@@ -13,6 +13,7 @@ export interface Sighting {
   description: string;
   photoUrl: string | null;
   timestamp: string;
+  type: SightingType;
 }
 
 // Matches createCommentSchema (src/modules/comments/comments.schema.ts) — `location` is

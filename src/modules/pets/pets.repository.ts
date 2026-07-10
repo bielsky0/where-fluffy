@@ -11,7 +11,7 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
   const findById = async (id: string): Promise<IPet | null> => {
     const [pet] = await prisma.$queryRaw<RawPetRow[]>`
       SELECT id, name, species, status, category, reward, phone, "distinguishingMarks", "photoUrl",
-             "ownerId", "createdAt", "updatedAt",
+             "photoUrls", city, "ownerId", "createdAt", "updatedAt",
              ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
       FROM "Pet"
       WHERE id = ${id}
@@ -27,16 +27,16 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     const [pet] = await prisma.$queryRaw<RawPetRow[]>`
       INSERT INTO "Pet" (
         id, name, species, category, reward, phone, "distinguishingMarks", "photoUrl",
-        "ownerId", status, location, "updatedAt"
+        "photoUrls", city, "ownerId", status, location, "updatedAt"
       )
       VALUES (
         gen_random_uuid(), ${dto.name}, ${dto.species}, ${dto.category}, ${dto.reward},
         ${dto.phone}, ${dto.distinguishingMarks ?? null}, ${dto.photoUrl ?? null},
-        ${dto.ownerId}, ${dto.status},
+        ${dto.photoUrls}, ${dto.city}, ${dto.ownerId}, ${dto.status},
         ST_SetSRID(ST_MakePoint(${dto.location.lng}, ${dto.location.lat}), 4326)::geography, now()
       )
       RETURNING id, name, species, status, category, reward, phone, "distinguishingMarks", "photoUrl",
-                "ownerId", "createdAt", "updatedAt",
+                "photoUrls", city, "ownerId", "createdAt", "updatedAt",
                 ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng;
     `;
     return mapToDomain(pet);
@@ -48,7 +48,7 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
 
     const pets = await prisma.$queryRaw<RawPetRow[]>`
       SELECT id, name, species, status, category, reward, phone, "distinguishingMarks", "photoUrl",
-             "ownerId", "createdAt", "updatedAt",
+             "photoUrls", city, "ownerId", "createdAt", "updatedAt",
              ST_Y(location::geometry) as lat,
              ST_X(location::geometry) as lng
       FROM "Pet"

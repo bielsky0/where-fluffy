@@ -50,6 +50,8 @@ model Pet {
   phone               String?
   distinguishingMarks String?
   photoUrl            String?
+  photoUrls           String[] @default([])
+  city                String?
 
   // Pole PostGIS
   location  Unsupported("geography(Point, 4326)")?

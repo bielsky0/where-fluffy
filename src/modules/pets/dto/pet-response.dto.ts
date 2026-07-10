@@ -10,6 +10,8 @@ export interface PetResponseDTO {
   phone: string | null;
   distinguishingMarks: string | null;
   photoUrl: string | null;
+  photoUrls: string[];
+  city: string | null;
   location: {
     lat: number;
     lng: number;

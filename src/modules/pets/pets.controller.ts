@@ -6,6 +6,7 @@ import { PetsService } from './pets.service.js';
 export type PetsController = {
   create: (req: AuthenticatedRequest, res: Response) => Promise<void>;
   listNearby: (req: AuthenticatedRequest, res: Response) => Promise<void>;
+  getById: (req: AuthenticatedRequest, res: Response) => Promise<void>;
 };
 
 export const createPetsController = (petsService: PetsService): PetsController => {
@@ -39,5 +40,13 @@ export const createPetsController = (petsService: PetsService): PetsController =
     res.status(200).json(pets);
   };
 
-  return { create, listNearby };
+  // Publiczna trasa — oglądanie szczegółów zgłoszenia nie wymaga sesji.
+  const getById = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const rawPetId = req.params.petId;
+    const petId = Array.isArray(rawPetId) ? rawPetId[0] : rawPetId;
+    const result = await petsService.getPetById(petId);
+    res.status(200).json(result);
+  };
+
+  return { create, listNearby, getById };
 };

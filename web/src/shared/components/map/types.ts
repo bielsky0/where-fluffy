@@ -43,6 +43,11 @@ export interface MapProps {
   markers?: MapMarkerProps[];
   className?: string;
   style?: CSSProperties;
+  // Disables dragging/zoomControl/scrollWheelZoom/touchZoom all at once — for a glanceable
+  // "here's roughly where" preview (e.g. the pet-detail mini-map) that shouldn't compete for
+  // gesture/scroll ownership with its surrounding page. Tiles still load; only user interaction
+  // is disabled. Defaults to `true` (the map explorer's normal, fully interactive mode).
+  interactive?: boolean;
   // Imperative re-center, separate from `center` — react-leaflet's MapContainer only reads
   // `center` on mount (see providers/LeafletMap.tsx), so panning to a newly-selected pet (e.g.
   // tapping a card in the results drawer) has to go through this instead of just changing `center`.

@@ -15,6 +15,8 @@ const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
   phone: null,
   distinguishingMarks: null,
   photoUrl: null,
+  photoUrls: [],
+  city: null,
   createdAt: new Date('2026-01-01T10:00:00.000Z'),
   updatedAt: new Date('2026-01-02T10:00:00.000Z'),
   ...overrides,

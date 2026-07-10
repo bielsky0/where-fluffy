@@ -19,4 +19,6 @@ export interface CreatePetDTO {
 export interface CreatePetRecordDTO extends Omit<CreatePetDTO, 'photoBase64'> {
   category: PetCategory;
   photoUrl?: string;
+  photoUrls: string[];
+  city: string | null;
 }

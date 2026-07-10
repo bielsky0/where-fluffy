@@ -105,6 +105,7 @@ export function LeafletMap({
   onCenterChange,
   onMoveStart,
   onBoundsChange,
+  interactive = true,
 }: MapProps) {
   return (
     <MapContainer
@@ -116,6 +117,11 @@ export function LeafletMap({
       // matters for the un-clustered individual/spiderfied markers at max zoom (see CLAUDE.md's
       // 60fps guide), which would otherwise still be one DOM node each.
       preferCanvas
+      dragging={interactive}
+      zoomControl={interactive}
+      scrollWheelZoom={interactive}
+      touchZoom={interactive}
+      doubleClickZoom={interactive}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

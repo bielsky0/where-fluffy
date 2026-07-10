@@ -20,6 +20,12 @@ router.post('/', authenticate, validate(createPetSchema), asyncHandler(petsContr
 router.get('/feed/urgent', validateQuery(urgentFeedQuerySchema), asyncHandler(feedController.urgent));
 router.get('/feed', validateQuery(feedQuerySchema), asyncHandler(feedController.list));
 
+// PUBLICZNE: szczegóły pojedynczego zgłoszenia. Musi być zarejestrowane po powyższym bloku
+// (/nearby, /feed/urgent, /feed) — to wszystko literalne segmenty, ale /:petId jest jednosegmentowym
+// catch-allem, który by je przesłonił, gdyby stał wcześniej (Express dopasowuje trasy w kolejności
+// rejestracji).
+router.get('/:petId', asyncHandler(petsController.getById));
+
 // --- Trasy Komentarzy / Sighting Points (Zagnieżdżone RESTowo) ---
 
 // PUBLICZNE: Każdy może zobaczyć wskazówki i komentarze pod zaginionym psem

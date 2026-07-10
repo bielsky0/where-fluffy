@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { useMapPins } from '@/modules/map/api/useMapPins';
 import { useFeedInfiniteBbox } from '@/modules/feed/api/useFeedInfiniteBbox';
+import { useAppLocation } from '@/modules/location/api/useAppLocation';
 import { useDebouncedCallback } from '@/shared/hooks/useDebouncedCallback';
 import type { Bbox } from '@/shared/lib/bbox';
 import type { BoundsRect } from '@/shared/components/map/types';
@@ -75,8 +76,15 @@ export function MapExplorerPage() {
 
   // Query center follows the map's own applied location filter — deliberately independent of
   // MainFeedPage's own location (useAppLocation), so browsing the feed never depends on, or pays
-  // for, anything the map wizard has done.
+  // for, anything the map wizard has done. Drives the map's center/bbox/pins only — see
+  // `userOrigin` below for what drives displayed distance.
   const queryCenter = appliedFilters.location?.coords ?? FALLBACK_ORIGIN;
+
+  // The user's real position (GPS fix > GeoIP > static fallback, see useAppLocation's own
+  // three-tier doc comment) — deliberately distinct from `queryCenter` above. Distance shown on
+  // PetCard must answer "how far is this pet from me", not "how far is this pet from the point I
+  // searched"; those are the same value only when the user searches their own location.
+  const { origin: userOrigin } = useAppLocation();
 
   // Dual-query architecture (CLAUDE.md): the map's pins (lightweight, unpaginated, drives
   // clustering) and the drawer's cards (heavy DTO, cursor-paginated) are two independent
@@ -221,7 +229,7 @@ export function MapExplorerPage() {
           {!isLoading && !isError && (
             <PetResultsList
               pets={filteredPets}
-              origin={queryCenter}
+              origin={userOrigin}
               selectedPetId={selectedPetId}
               imageAspectClassName={sheetSnap === 'half' ? 'aspect-[16/9]' : undefined}
               scrollContainerRef={drawerContentRef}
@@ -237,7 +245,7 @@ export function MapExplorerPage() {
           only thing that ever mounts this; it's fully decoupled from currentAppState/sheetSnap,
           so it works the same whether the results drawer is present (STATE_C) or not. */}
       <AnimatePresence>
-        {selectedPet && <PetDetailPanel key={selectedPet.id} pet={selectedPet} origin={queryCenter} onClose={clearSelection} />}
+        {selectedPet && <PetDetailPanel key={selectedPet.id} pet={selectedPet} origin={userOrigin} onClose={clearSelection} />}
       </AnimatePresence>
     </>
   );

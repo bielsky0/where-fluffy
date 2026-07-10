@@ -32,7 +32,11 @@ export function MapView({ pins, center, selectedPetId, onSelectPet, onBoundsChan
     <Map
       center={center}
       zoom={13}
-      focusCenter={selectedPin ? { lat: selectedPin.lat, lng: selectedPin.lng } : null}
+      // Falls back to `center` (not null) so a newly-searched location actually pans the live
+      // map — MapContainer's own `center` prop only applies once, on mount (see
+      // LeafletMap.tsx's FlyToFocus), so without this fallback picking a new location in the
+      // search modal silently never moved the map. Pin selection still takes priority.
+      focusCenter={selectedPin ? { lat: selectedPin.lat, lng: selectedPin.lng } : center}
       onBoundsChange={onBoundsChange}
       markers={pins.map((pin) => ({
         id: pin.id,

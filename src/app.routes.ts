@@ -5,6 +5,7 @@ import chatRoutes from './modules/chat/chat.routes.js'; // <-- Nowy moduł
 import locationRoutes from './modules/location/location.routes.js';
 import mapRoutes from './modules/map/map.routes.js';
 import seoRoutes from './modules/seo/seo.routes.js';
+import geocodeRoutes from './modules/geocode/geocode.routes.js';
 
 const apiRouter = Router();
 
@@ -14,5 +15,6 @@ apiRouter.use('/chats', chatRoutes); // Endpointy będą dostępne pod /chats
 apiRouter.use('/location', locationRoutes);
 apiRouter.use('/map', mapRoutes);
 apiRouter.use('/seo', seoRoutes);
+apiRouter.use('/geocode', geocodeRoutes);
 
 export default apiRouter;

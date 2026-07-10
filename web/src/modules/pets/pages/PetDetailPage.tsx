@@ -59,7 +59,7 @@ export default function PetDetailPage() {
   const navigate = useNavigate();
   const openMapAt = useAppUIStore((state) => state.openMapAt);
   const selectPet = usePetMapStore((state) => state.selectPet);
-  const { origin } = useAppLocation();
+  const { origin, isResolving: isLocationResolving } = useAppLocation();
 
   const { data: pet, isLoading, isError } = usePet(petId);
   const { data: sightings } = useSightings(petId);
@@ -72,11 +72,10 @@ export default function PetDetailPage() {
 
   const handleOpenMap = () => {
     if (!pet) return;
-    openMapAt({ label: pet.city ?? 'Wybrana lokalizacja', coords: pet.location });
+    openMapAt({ label: pet.city ?? 'Wybrana lokalizacja', coords: pet.location, bbox: null });
     selectPet(pet.id);
     navigate('/app');
   };
-
   const handleShare = async () => {
     if (!pet) return;
     const url = `${window.location.origin}/app/pets/${pet.id}`;
@@ -117,7 +116,7 @@ export default function PetDetailPage() {
 
   const status = STATUS_COPY[pet.status];
   const reporterRole = pet.status === 'missing' ? 'Właściciel' : 'Osoba, która znalazła';
-  const distanceLabel = formatDistance(distanceMeters(origin, pet.location));
+  const distanceLabel = isLocationResolving ? '…' : formatDistance(distanceMeters(origin, pet.location));
 
   return (
     <div className="flex h-[100dvh] flex-col bg-white">

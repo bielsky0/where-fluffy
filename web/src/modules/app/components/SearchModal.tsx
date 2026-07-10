@@ -1,18 +1,23 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { getCurrentPosition } from '@/shared/lib/geolocation';
 import { useVirtualKeyboardVisible } from '@/shared/lib/useVirtualKeyboard';
 import { cn } from '@/shared/lib/cn';
+import { useLocationSearch } from '@/modules/geocode/api/useLocationSearch';
+import { useAppLocation } from '@/modules/location/api/useAppLocation';
+import type { GeocodeResult } from '@/modules/geocode/types/geocode.types';
 import { PET_TYPE_LABELS, type PetTypeFilter } from '@/modules/pets/lib/petType';
 import { TIMEFRAME_LABELS, type TimeframeFilter } from '@/modules/pets/lib/timeframe';
 import type { PetStatus } from '@/modules/pets/types/pet.types';
-import { useAppUIStore, type AccordionStep } from '../store/useAppUIStore';
+import { useAppUIStore } from '../store/useAppUIStore';
 
-// Same spring across the header's sliding underline, each card's expand/collapse morph, and
-// the footer's keyboard-avoidance slide — one motion "voice" for the whole modal rather than
-// three slightly different ones.
+// Same spring across the header's sliding underline and the footer's keyboard-avoidance slide —
+// reserved for continuous/interruptible interactions. The root<->drill-down navigation below
+// uses its own SCREEN_TRANSITION instead: a full-screen slide-in is a one-shot, non-interruptible
+// "new screen arrives" event, and the spec's literal "0.3s ease-out" isn't reproducible by a
+// fixed spring (springs have a settle time that varies with distance, not a fixed duration).
 const SPRING = { type: 'spring', damping: 30, stiffness: 320 } as const;
+const SCREEN_TRANSITION = { duration: 0.3, ease: 'easeOut' } as const;
 
 // Design tokens straight from the Airbnb-style spec this modal implements — deliberately
 // hardcoded hex rather than the app's `bg-card`/`text-foreground` theme tokens (same call as
@@ -23,26 +28,40 @@ const MUTED_GRAY = '#8E8E93';
 const HAIRLINE_BORDER = '#E5E5E5';
 const LOST_RED = '#FF3B30';
 const SIGHTED_YELLOW = '#FFC107';
+// Sits clearly apart from both LOST_RED (warm) and SIGHTED_YELLOW on the hue wheel so "Obie"
+// reads as a calm, neutral third option rather than a blend of the other two.
+const BOTH_TEAL = '#3D8B8B';
 const CORAL = '#FF6B4A';
 
-// No backend endpoint returns search history (or does geocoding at all — see
-// useAppUIStore.ts's LocationFilter comment), so these are fixed placeholder suggestions
-// standing in for "local recommendations", the same "don't fake a capability we don't have"
-// stance already taken by add-listing-wizard/StepFork.tsx's disabled "Znalazłem" tile.
-interface DestinationSuggestion {
-  label: string;
-  subtitle: string;
-  badgeBg: string;
-  iconColor: string;
-  Icon: () => JSX.Element;
-}
+const MIN_LOCATION_QUERY_LENGTH = 2;
 
 const TIMEFRAME_OPTIONS = Object.keys(TIMEFRAME_LABELS) as TimeframeFilter[];
+
+type StatusOption = PetStatus | 'both';
+const STATUS_OPTIONS: StatusOption[] = ['missing', 'both', 'found'];
+const STATUS_LABELS: Record<StatusOption, string> = {
+  missing: 'Zaginione',
+  both: 'Obie',
+  found: 'Widziane',
+};
+const STATUS_DOT_COLOR: Record<StatusOption, string> = {
+  missing: LOST_RED,
+  both: BOTH_TEAL,
+  found: SIGHTED_YELLOW,
+};
 
 function CloseIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="size-4" aria-hidden="true">
       <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="size-5" aria-hidden="true">
+      <path d="m15 18-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -104,134 +123,228 @@ function NavigationIcon() {
   );
 }
 
-function BuildingIcon() {
+function PinIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="size-5" aria-hidden="true">
-      <rect x="6" y="3" width="12" height="18" rx="1" />
-      <path d="M9 7h1.5M13.5 7H15M9 11h1.5M13.5 11H15M9 15h1.5M13.5 15H15" strokeLinecap="round" />
+      <path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21Z" strokeLinejoin="round" />
+      <circle cx="12" cy="9.5" r="2.2" />
     </svg>
   );
 }
 
-function ParkIcon() {
+function ExclamationIcon({ className = 'size-3.5' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="size-5" aria-hidden="true">
-      <path d="M6 18c0-7 4-11 12-12-1 8-5 12-12 12Z" strokeLinejoin="round" />
-      <path d="M6 18c2-2 4-4 6-9" strokeLinecap="round" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className} aria-hidden="true">
+      <path d="M12 4v10" strokeLinecap="round" />
+      <circle cx="12" cy="18.5" r="1" fill="currentColor" stroke="none" />
     </svg>
   );
 }
 
-function TreeIcon() {
+function EyeIcon({ className = 'size-3.5' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="size-5" aria-hidden="true">
-      <path d="M12 3l5 7h-3l4 6H6l4-6H7l5-7Z" strokeLinejoin="round" />
-      <path d="M12 16v5" strokeLinecap="round" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={className} aria-hidden="true">
+      <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="2.5" />
     </svg>
   );
 }
 
-// Pastel-badge destination rows below the "W pobliżu" GPS row — each a distinct pastel tone +
-// outline icon per the spec (buildings/trees/parks), never the same combination twice.
-const NEIGHBORHOOD_SUGGESTIONS: DestinationSuggestion[] = [
-  {
-    label: 'Wrocław, Krzyki',
-    subtitle: 'Wyszukaj w promieniu 3 km',
-    badgeBg: '#FFF1E6',
-    iconColor: '#F2994A',
-    Icon: BuildingIcon,
-  },
-  {
-    label: 'Wrocław, Stare Miasto',
-    subtitle: 'Wyszukaj w promieniu 3 km',
-    badgeBg: '#FDEAF0',
-    iconColor: '#E8628A',
-    Icon: ParkIcon,
-  },
-  {
-    label: 'Wrocław, Psie Pole',
-    subtitle: 'Wyszukaj w promieniu 3 km',
-    badgeBg: '#E6F7EF',
-    iconColor: '#27AE60',
-    Icon: TreeIcon,
-  },
-];
+// The "Obie" segment's icon — a simple overlap of the lost/sighted marks (an exclamation and an
+// eye, both softened) rather than inventing an unrelated third glyph, so it visually reads as
+// "combination of the other two", not a fourth, unrelated status.
+function BothIcon({ className = 'size-3.5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={className} aria-hidden="true">
+      <circle cx="9" cy="12" r="6" opacity={0.55} />
+      <circle cx="15" cy="12" r="6" opacity={0.55} />
+    </svg>
+  );
+}
 
-interface AccordionCardProps {
-  expanded: boolean;
-  onExpand: () => void;
+const STATUS_ICONS: Record<StatusOption, (props: { className?: string }) => JSX.Element> = {
+  missing: ExclamationIcon,
+  both: BothIcon,
+  found: EyeIcon,
+};
+
+interface DrilldownHeaderProps {
   headline: string;
-  collapsedLeft: string;
-  collapsedRight: string;
-  children: ReactNode;
+  onBack: () => void;
 }
 
-// One of the three body cards. `layout` on the root lets Framer Motion interpolate the card's
-// bounding box between renders (the "auto-height" trick — no explicit height math needed), so
-// when its own content flips between the collapsed bar and the expanded body, both this card
-// and every sibling below it (pushed by normal flex-column flow) glide to their new position
-// instead of snapping. AnimatePresence + mode="popLayout" crossfades the bar/body swap itself
-// and pulls the exiting one out of layout flow immediately, so the incoming content doesn't
-// wait for it to finish fading before the container starts resizing.
-function AccordionCard({ expanded, onExpand, headline, collapsedLeft, collapsedRight, children }: AccordionCardProps) {
+// Shared chrome for every full-screen drill-down (pet type / location / timeframe) — back
+// chevron pops the stack back to the root screen (useAppUIStore's closeDrilldown), headline
+// mirrors what AccordionCard used to render inline before the accordion->stack-nav rework.
+function DrilldownHeader({ headline, onBack }: DrilldownHeaderProps) {
   return (
-    <motion.div
-      layout
-      transition={SPRING}
-      className="overflow-hidden rounded-[24px] bg-white shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)]"
+    <div className="flex shrink-0 items-center gap-3 p-4 pt-safe">
+      <button
+        type="button"
+        onClick={onBack}
+        aria-label="Wstecz"
+        className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white transition-transform active:scale-95"
+        style={{ border: `1px solid ${HAIRLINE_BORDER}`, color: ANTHRACITE }}
+      >
+        <ChevronLeftIcon />
+      </button>
+      <h2 className="text-xl font-bold" style={{ color: ANTHRACITE }}>
+        {headline}
+      </h2>
+    </div>
+  );
+}
+
+interface StateRowProps {
+  label: string;
+  value: string;
+  onClick: () => void;
+}
+
+// One of the root screen's three state-strip rows — a pure display of draft state (placeholder
+// vs filled label, per useAppUIStore's draft fields) that opens the matching drill-down on tap.
+// Visually identical to the old AccordionCard's collapsed bar, just without the expand-in-place
+// behavior now that opening it pushes a full-screen drill-down instead.
+function StateRow({ label, value, onClick }: StateRowProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center justify-between gap-2 rounded-[24px] bg-white px-5 py-4 text-left shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)] transition-transform active:scale-95"
     >
-      <AnimatePresence initial={false} mode="popLayout">
-        {expanded ? (
-          <motion.div
-            key="expanded"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.16 }}
-            className="px-5 pb-5 pt-5"
+      <span className="text-sm font-medium" style={{ color: MUTED_GRAY }}>
+        {label}
+      </span>
+      <span className="truncate text-sm font-bold" style={{ color: ANTHRACITE }}>
+        {value}
+      </span>
+    </button>
+  );
+}
+
+interface LocationScreenBodyProps {
+  locationInput: string;
+  onLocationInputChange: (value: string) => void;
+  onLocationInputFocus: () => void;
+  onLocationInputBlur: () => void;
+  isLocating: boolean;
+  onUseCurrentLocation: () => void;
+  results: GeocodeResult[];
+  isFetching: boolean;
+  onSelectResult: (result: GeocodeResult) => void;
+}
+
+// Staggered fade-in for the results list — 0.05s per row, per spec — kept as its own small
+// variant pair rather than touching SPRING/SCREEN_TRANSITION.
+const RESULTS_LIST_VARIANTS = { visible: { transition: { staggerChildren: 0.05 } } };
+const RESULT_ROW_VARIANTS = { hidden: { opacity: 0 }, visible: { opacity: 1 } };
+
+function LocationScreenBody({
+  locationInput,
+  onLocationInputChange,
+  onLocationInputFocus,
+  onLocationInputBlur,
+  isLocating,
+  onUseCurrentLocation,
+  results,
+  isFetching,
+  onSelectResult,
+}: LocationScreenBodyProps) {
+  const trimmedLength = locationInput.trim().length;
+  const showEmptyState = trimmedLength >= MIN_LOCATION_QUERY_LENGTH && !isFetching && results.length === 0;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="relative">
+        <MagnifierIcon className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2" />
+        <input
+          type="text"
+          value={locationInput}
+          onChange={(event) => onLocationInputChange(event.target.value)}
+          onFocus={onLocationInputFocus}
+          onBlur={onLocationInputBlur}
+          placeholder="Wyszukaj miejscowość lub ulicę"
+          style={{ color: ANTHRACITE, border: `1px solid ${HAIRLINE_BORDER}` }}
+          className="h-12 w-full rounded-xl bg-white pl-11 pr-4 text-sm outline-none placeholder:text-[#8E8E93] focus-visible:border-black"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={onUseCurrentLocation}
+          disabled={isLocating}
+          className="flex items-center gap-3 rounded-2xl px-2 py-3 text-left transition-transform hover:bg-black/[0.03] active:scale-95 disabled:opacity-60"
+        >
+          <span
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl"
+            style={{ backgroundColor: '#E3F2FD', color: '#1D7BE8' }}
           >
-            <h2 className="mb-4 text-xl font-bold" style={{ color: ANTHRACITE }}>
-              {headline}
-            </h2>
-            {children}
-          </motion.div>
-        ) : (
-          <motion.button
-            key="collapsed"
-            type="button"
-            onClick={onExpand}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.16 }}
-            className="flex w-full items-center justify-between gap-2 px-5 py-4 text-left"
-          >
-            <span className="text-sm font-medium" style={{ color: MUTED_GRAY }}>
-              {collapsedLeft}
+            <NavigationIcon />
+          </span>
+          <span className="flex flex-col">
+            <span className="text-sm font-bold" style={{ color: ANTHRACITE }}>
+              {isLocating ? 'Lokalizowanie…' : 'W pobliżu'}
             </span>
-            <span className="truncate text-sm font-bold" style={{ color: ANTHRACITE }}>
-              {collapsedRight}
+            <span className="text-xs" style={{ color: MUTED_GRAY }}>
+              Twoja aktualna lokalizacja
             </span>
-          </motion.button>
+          </span>
+        </button>
+
+        {isFetching && (
+          <p className="px-2 py-3 text-sm" style={{ color: MUTED_GRAY }}>
+            Szukam…
+          </p>
         )}
-      </AnimatePresence>
-    </motion.div>
+        {showEmptyState && (
+          <p className="px-2 py-3 text-sm" style={{ color: MUTED_GRAY }}>
+            Brak wyników
+          </p>
+        )}
+
+        <motion.div initial="hidden" animate="visible" variants={RESULTS_LIST_VARIANTS} className="flex flex-col gap-1">
+          {results.map((result) => (
+            <motion.button
+              key={`${result.lat},${result.lng}`}
+              type="button"
+              variants={RESULT_ROW_VARIANTS}
+              onClick={() => onSelectResult(result)}
+              className="flex items-center gap-3 rounded-2xl px-2 py-3 text-left transition-transform hover:bg-black/[0.03] active:scale-95"
+            >
+              <span
+                className="flex size-11 shrink-0 items-center justify-center rounded-xl"
+                style={{ backgroundColor: '#EDE9FE', color: '#7C3AED' }}
+              >
+                <PinIcon />
+              </span>
+              <span className="flex flex-col">
+                <span className="text-sm font-bold" style={{ color: ANTHRACITE }}>
+                  {result.label}
+                </span>
+              </span>
+            </motion.button>
+          ))}
+        </motion.div>
+      </div>
+    </div>
   );
 }
 
 // STATE_B: the full-screen search & filter modal (mounted by MapExplorerPage.tsx, conditional
 // on currentAppState === 'STATE_B'). Reads/writes useAppUIStore directly, same pattern as
-// AuthModal.tsx / useAuthStore, since it has no meaningful props of its own. Airbnb-style
-// accordion: all three cards are always mounted, exactly one (`accordionStep`) is expanded at
-// a time — any collapsed card can be tapped directly to jump to it, not just "next"/"back".
+// AuthModal.tsx / useAuthStore, since it has no meaningful props of its own. Stack navigation:
+// the root screen (status control + 3 state-strip rows + footer) stays mounted; tapping a row
+// pushes one of three full-screen drill-downs over it (modalScreen), which slides in from the
+// right and pops back on commit or via its own back chevron.
 export function SearchModal() {
-  const accordionStep = useAppUIStore((state) => state.accordionStep);
+  const modalScreen = useAppUIStore((state) => state.modalScreen);
   const draftStatus = useAppUIStore((state) => state.draftStatus);
   const draftPetType = useAppUIStore((state) => state.draftPetType);
   const draftLocation = useAppUIStore((state) => state.draftLocation);
   const draftTimeframe = useAppUIStore((state) => state.draftTimeframe);
   const closeSearch = useAppUIStore((state) => state.closeSearch);
-  const goToStep = useAppUIStore((state) => state.goToStep);
+  const openDrilldown = useAppUIStore((state) => state.openDrilldown);
+  const closeDrilldown = useAppUIStore((state) => state.closeDrilldown);
   const setDraftStatus = useAppUIStore((state) => state.setDraftStatus);
   const setDraftPetType = useAppUIStore((state) => state.setDraftPetType);
   const setDraftLocation = useAppUIStore((state) => state.setDraftLocation);
@@ -249,6 +362,15 @@ export function SearchModal() {
   // behind the blur itself.
   const hideFooter = isLocationInputFocused && isKeyboardVisible;
 
+  const { data: locationResults = [], isFetching: isSearchingLocation } = useLocationSearch(locationInput);
+  const { triggerExactLocation } = useAppLocation();
+
+  // Bumped on every keystroke and at the start of every GPS request — the async
+  // getCurrentPosition() call can take seconds, so this guards against a stale resolution
+  // clobbering whatever the user has typed/tapped since (last-action-wins, not
+  // last-to-resolve-wins). See useAppUIStore's LocationFilter for the shape this feeds.
+  const locationRequestId = useRef(0);
+
   // "Wyczyść wszystko" resets draftLocation to null in the store — this mirrors that back into
   // the input's own local text, which only tracks in-progress typing otherwise (see
   // handleLocationInputChange) and has no other reason to resync from the store.
@@ -257,33 +379,48 @@ export function SearchModal() {
   }, [draftLocation]);
 
   const handleLocationInputChange = (value: string) => {
+    locationRequestId.current += 1; // invalidates any GPS request still in flight
     setLocationInput(value);
-    // Typed text has nowhere to be geocoded (no backend endpoint for it) — kept only as a
-    // display label, and deliberately does not auto-advance (see selectDraftLocation).
-    setDraftLocation(value.trim() ? { label: value.trim(), coords: null } : null);
+    // Typed text drives useLocationSearch's debounced query; the draft only stores it as a
+    // display label with no coords until the user commits to a real result below.
+    setDraftLocation(value.trim() ? { label: value.trim(), coords: null, bbox: null } : null);
   };
 
-  const handleSelectSuggestion = (label: string) => {
-    setLocationInput(label);
-    selectDraftLocation({ label, coords: null });
+  const handleSelectResult = (result: GeocodeResult) => {
+    locationRequestId.current += 1; // invalidates any GPS request still in flight
+    setLocationInput(result.label);
+    selectDraftLocation({ label: result.label, coords: { lat: result.lat, lng: result.lng }, bbox: result.bbox });
   };
 
   const handleUseCurrentLocation = async () => {
+    const requestId = ++locationRequestId.current;
     setIsLocating(true);
     try {
-      const coords = await getCurrentPosition();
+      // triggerExactLocation() (useAppLocation) both fetches via the browser's Geolocation API
+      // AND persists the result into useLocationStore as a side effect — this is what makes a
+      // GPS grant here also power the shared "my location" used for distance-to-pet elsewhere
+      // (PetDetailPage, MapExplorerPage, MainFeedPage), not just this search filter.
+      const location = await triggerExactLocation();
+      // The user may have typed a new location or re-tapped GPS while this was in flight —
+      // only the most recent request is allowed to win.
+      if (locationRequestId.current !== requestId) return;
+      if (!location) {
+        toast('Nie udało się pobrać Twojej lokalizacji');
+        return;
+      }
       setLocationInput('Twoja lokalizacja');
-      selectDraftLocation({ label: 'Twoja lokalizacja', coords });
-    } catch {
-      toast('Nie udało się pobrać Twojej lokalizacji');
+      selectDraftLocation({ label: 'Twoja lokalizacja', coords: { lat: location.lat, lng: location.lng }, bbox: null });
     } finally {
-      setIsLocating(false);
+      if (locationRequestId.current === requestId) setIsLocating(false);
     }
   };
 
   const petTypeLabel = draftPetType ? PET_TYPE_LABELS[draftPetType] : 'Wybierz';
   const locationLabel = draftLocation?.label ?? 'Dodaj lokalizację';
   const timeframeLabel = draftTimeframe === 'all' ? 'Dowolny czas' : TIMEFRAME_LABELS[draftTimeframe];
+
+  const drilldownHeadline =
+    modalScreen === 'petType' ? 'Jakie zwierzę?' : modalScreen === 'location' ? 'Gdzie?' : 'Kiedy?';
 
   return (
     <motion.div
@@ -296,15 +433,16 @@ export function SearchModal() {
       className="fixed inset-0 z-[1500] flex flex-col overscroll-none"
       style={{ backgroundColor: '#F7F7F7' }}
     >
+      {/* Root screen — always mounted; the drill-down layer below slides over it. */}
       {/* Grid keeps the toggle tabs perfectly centered regardless of the close button's own
           width — a plain flex row with justify-between would shift the tabs off-center. */}
       <header className="grid shrink-0 grid-cols-[40px_1fr_40px] items-center gap-3 p-4 pt-safe">
         <span aria-hidden="true" />
-        <div className="flex items-center justify-center gap-8">
-          {(['missing', 'found'] as PetStatus[]).map((status) => {
+        <div className="flex items-center justify-center gap-6">
+          {STATUS_OPTIONS.map((status) => {
             const active = draftStatus === status;
-            const label = status === 'missing' ? 'Zaginione' : 'Widziane';
-            const dotColor = status === 'missing' ? LOST_RED : SIGHTED_YELLOW;
+            const Icon = STATUS_ICONS[status];
+            const dotColor = STATUS_DOT_COLOR[status];
             return (
               <button
                 key={status}
@@ -314,12 +452,15 @@ export function SearchModal() {
                 className="flex flex-col items-center gap-1.5 pb-0.5"
               >
                 <span className="flex items-center gap-1.5">
+                  <span style={{ color: active ? dotColor : MUTED_GRAY }}>
+                    <Icon className="size-3.5" />
+                  </span>
                   <span className="size-2 rounded-full" style={{ backgroundColor: dotColor }} aria-hidden="true" />
                   <span
                     className="text-[15px]"
                     style={{ color: active ? ANTHRACITE : MUTED_GRAY, fontWeight: active ? 700 : 500 }}
                   >
-                    {label}
+                    {STATUS_LABELS[status]}
                   </span>
                 </span>
                 {active ? (
@@ -343,138 +484,9 @@ export function SearchModal() {
       </header>
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4">
-        <AccordionCard
-          expanded={accordionStep === 1}
-          onExpand={() => goToStep(1 as AccordionStep)}
-          headline="Jakie zwierzę?"
-          collapsedLeft="Zwierzę"
-          collapsedRight={petTypeLabel}
-        >
-          <div className="grid grid-cols-3 gap-3">
-            {(Object.keys(PET_TYPE_LABELS) as PetTypeFilter[]).map((petType) => {
-              const Icon = PET_TYPE_ICONS[petType];
-              const selected = draftPetType === petType;
-              return (
-                <button
-                  key={petType}
-                  type="button"
-                  onClick={() => setDraftPetType(petType)}
-                  aria-pressed={selected}
-                  className={cn(
-                    'flex flex-col items-center justify-center gap-3 rounded-2xl bg-white px-3 py-6 transition-all',
-                    selected && 'bg-black/[0.04]',
-                  )}
-                  style={{
-                    color: ANTHRACITE,
-                    border: selected ? '2px solid #000000' : `1px solid ${HAIRLINE_BORDER}`,
-                  }}
-                >
-                  <Icon />
-                  <span className="text-sm font-semibold">{PET_TYPE_LABELS[petType]}</span>
-                </button>
-              );
-            })}
-          </div>
-        </AccordionCard>
-
-        <AccordionCard
-          expanded={accordionStep === 2}
-          onExpand={() => goToStep(2 as AccordionStep)}
-          headline="Gdzie?"
-          collapsedLeft="Gdzie?"
-          collapsedRight={locationLabel}
-        >
-          <div className="flex flex-col gap-4">
-            <div className="relative">
-              <MagnifierIcon className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2" />
-              <input
-                type="text"
-                value={locationInput}
-                onChange={(event) => handleLocationInputChange(event.target.value)}
-                onFocus={() => setIsLocationInputFocused(true)}
-                onBlur={() => setIsLocationInputFocused(false)}
-                placeholder="Wyszukaj dzielnicę lub ulicę"
-                style={{ color: ANTHRACITE, border: `1px solid ${HAIRLINE_BORDER}` }}
-                className="h-12 w-full rounded-xl bg-white pl-11 pr-4 text-sm outline-none placeholder:text-[#8E8E93] focus-visible:border-black"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <button
-                type="button"
-                onClick={handleUseCurrentLocation}
-                disabled={isLocating}
-                className="flex items-center gap-3 rounded-2xl px-2 py-3 text-left transition-colors hover:bg-black/[0.03] disabled:opacity-60"
-              >
-                <span
-                  className="flex size-11 shrink-0 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: '#E3F2FD', color: '#1D7BE8' }}
-                >
-                  <NavigationIcon />
-                </span>
-                <span className="flex flex-col">
-                  <span className="text-sm font-bold" style={{ color: ANTHRACITE }}>
-                    {isLocating ? 'Lokalizowanie…' : 'W pobliżu'}
-                  </span>
-                  <span className="text-xs" style={{ color: MUTED_GRAY }}>
-                    Twoja aktualna lokalizacja
-                  </span>
-                </span>
-              </button>
-              {NEIGHBORHOOD_SUGGESTIONS.map((suggestion) => (
-                <button
-                  key={suggestion.label}
-                  type="button"
-                  onClick={() => handleSelectSuggestion(suggestion.label)}
-                  className="flex items-center gap-3 rounded-2xl px-2 py-3 text-left transition-colors hover:bg-black/[0.03]"
-                >
-                  <span
-                    className="flex size-11 shrink-0 items-center justify-center rounded-xl"
-                    style={{ backgroundColor: suggestion.badgeBg, color: suggestion.iconColor }}
-                  >
-                    <suggestion.Icon />
-                  </span>
-                  <span className="flex flex-col">
-                    <span className="text-sm font-bold" style={{ color: ANTHRACITE }}>
-                      {suggestion.label}
-                    </span>
-                    <span className="text-xs" style={{ color: MUTED_GRAY }}>
-                      {suggestion.subtitle}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </AccordionCard>
-
-        <AccordionCard
-          expanded={accordionStep === 3}
-          onExpand={() => goToStep(3 as AccordionStep)}
-          headline="Kiedy?"
-          collapsedLeft="Kiedy?"
-          collapsedRight={timeframeLabel}
-        >
-          <div className="flex flex-wrap gap-2">
-            {TIMEFRAME_OPTIONS.map((timeframe) => {
-              const selected = draftTimeframe === timeframe;
-              return (
-                <button
-                  key={timeframe}
-                  type="button"
-                  onClick={() => setDraftTimeframe(timeframe)}
-                  aria-pressed={selected}
-                  className={cn('rounded-full px-4 py-2.5 text-sm font-semibold transition-all', selected && 'bg-black/[0.04]')}
-                  style={{
-                    color: ANTHRACITE,
-                    border: selected ? '2px solid #000000' : `1px solid ${HAIRLINE_BORDER}`,
-                  }}
-                >
-                  {TIMEFRAME_LABELS[timeframe]}
-                </button>
-              );
-            })}
-          </div>
-        </AccordionCard>
+        <StateRow label="Zwierzę" value={petTypeLabel} onClick={() => openDrilldown('petType')} />
+        <StateRow label="Gdzie?" value={locationLabel} onClick={() => openDrilldown('location')} />
+        <StateRow label="Kiedy?" value={timeframeLabel} onClick={() => openDrilldown('timeframe')} />
       </div>
 
       <motion.div
@@ -501,6 +513,93 @@ export function SearchModal() {
           <span className="text-[15px] font-bold">Szukaj</span>
         </button>
       </motion.div>
+
+      {/* Drill-down layer — one full-screen screen at a time, sliding in from the right over the
+          root screen above, per the spec's stack-navigation brief. */}
+      <AnimatePresence initial={false}>
+        {modalScreen !== 'root' && (
+          <motion.div
+            key={modalScreen}
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={SCREEN_TRANSITION}
+            className="absolute inset-0 z-20 flex flex-col overscroll-none"
+            style={{ backgroundColor: '#F7F7F7' }}
+          >
+            <DrilldownHeader headline={drilldownHeadline} onBack={closeDrilldown} />
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-5">
+              {modalScreen === 'petType' && (
+                <div className="grid grid-cols-3 gap-3">
+                  {(Object.keys(PET_TYPE_LABELS) as PetTypeFilter[]).map((petType) => {
+                    const Icon = PET_TYPE_ICONS[petType];
+                    const selected = draftPetType === petType;
+                    return (
+                      <button
+                        key={petType}
+                        type="button"
+                        onClick={() => setDraftPetType(petType)}
+                        aria-pressed={selected}
+                        className={cn(
+                          'flex flex-col items-center justify-center gap-3 rounded-2xl bg-white px-3 py-6 transition-transform active:scale-95',
+                          selected && 'bg-black/[0.04]',
+                        )}
+                        style={{
+                          color: ANTHRACITE,
+                          border: selected ? '2px solid #000000' : `1px solid ${HAIRLINE_BORDER}`,
+                        }}
+                      >
+                        <Icon />
+                        <span className="text-sm font-semibold">{PET_TYPE_LABELS[petType]}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {modalScreen === 'location' && (
+                <LocationScreenBody
+                  locationInput={locationInput}
+                  onLocationInputChange={handleLocationInputChange}
+                  onLocationInputFocus={() => setIsLocationInputFocused(true)}
+                  onLocationInputBlur={() => setIsLocationInputFocused(false)}
+                  isLocating={isLocating}
+                  onUseCurrentLocation={handleUseCurrentLocation}
+                  results={locationResults}
+                  isFetching={isSearchingLocation}
+                  onSelectResult={handleSelectResult}
+                />
+              )}
+
+              {modalScreen === 'timeframe' && (
+                <div className="flex flex-wrap gap-2">
+                  {TIMEFRAME_OPTIONS.map((timeframe) => {
+                    const selected = draftTimeframe === timeframe;
+                    return (
+                      <button
+                        key={timeframe}
+                        type="button"
+                        onClick={() => setDraftTimeframe(timeframe)}
+                        aria-pressed={selected}
+                        className={cn(
+                          'rounded-full px-4 py-2.5 text-sm font-semibold transition-transform active:scale-95',
+                          selected && 'bg-black/[0.04]',
+                        )}
+                        style={{
+                          color: ANTHRACITE,
+                          border: selected ? '2px solid #000000' : `1px solid ${HAIRLINE_BORDER}`,
+                        }}
+                      >
+                        {TIMEFRAME_LABELS[timeframe]}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

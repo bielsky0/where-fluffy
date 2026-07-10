@@ -21,9 +21,9 @@ export const createPetsService = (
   const reportMissingPet = async (dto: CreatePetDTO): Promise<PetResponseDTO> => {
     // Tutaj opcjonalnie: logika biznesowa (np. limit zgłoszeń dla darmowego konta)
     const category = categorizePetSpecies(dto.species);
-    const { photoBase64, ...rest } = dto;
-    const photoUrl = photoBase64 ? await photoService.store(photoBase64) : undefined;
-    const photoUrls = photoUrl ? [photoUrl] : [];
+    const { photoBase64s, ...rest } = dto;
+    const photoUrls = await Promise.all(photoBase64s.map((base64) => photoService.store(base64)));
+    const photoUrl = photoUrls[0];
     // Geocoding never throws (see geocoding.service.ts's Silent Fallback contract) — a slow or
     // unreachable Nominatim must not block/fail pet creation, it just leaves city null.
     const city = await geocodingService.reverseGeocode(dto.location.lat, dto.location.lng);

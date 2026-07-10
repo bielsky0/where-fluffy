@@ -1,5 +1,17 @@
 import type { Coordinate } from '@/shared/components/map/types';
 
+// A Znalazca (finder, V2 wizard) doesn't know the pet's name, so `Pet.name` is nullable — these
+// two helpers centralize the display fallback rather than repeating `pet.name ?? '...'`/
+// `(pet.name ?? '?').charAt(0)` at every call site (PetCard, PetDetailPanel, HeroGallery,
+// StoryModeOverlay, PetDetailPage).
+export function getPetDisplayName(pet: { name: string | null; species: string }): string {
+  return pet.name ?? `Znaleziony ${pet.species.toLowerCase()}`;
+}
+
+export function getPetDisplayInitial(pet: { name: string | null }): string {
+  return (pet.name ?? '?').charAt(0).toUpperCase();
+}
+
 const EARTH_RADIUS_M = 6371000;
 
 // Haversine great-circle distance — the map/pins are already lat/lng-only (no server-computed

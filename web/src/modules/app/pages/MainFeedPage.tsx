@@ -108,7 +108,7 @@ export function MainFeedPage() {
   // Backend category filtering only knows 'dog'|'cat'|'other' — 'all' means "omit the param".
   const [category, setCategory] = useState<FeedCategory>('all');
   const apiCategory: PetTypeFilter | undefined = category === 'all' ? undefined : category;
-
+console.log(origin)
   const { data: urgentPets, isLoading: isUrgentLoading, isError: isUrgentError } = useUrgentFeed({
     ...origin,
     radius: 5000,

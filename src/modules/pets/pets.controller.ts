@@ -11,15 +11,13 @@ export type PetsController = {
 
 export const createPetsController = (petsService: PetsService): PetsController => {
   // req.body jest już zwalidowany przez middleware validate(createPetSchema) w pets.routes.ts.
+  // Trasa ma authenticate przed sobą (pets.routes.ts), więc req.user jest zawsze ustawione.
   const create = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const validatedBody = req.body as Omit<CreatePetDTO, 'ownerId'>;
 
-    // Mock użytkownika (w przyszłości pobierane z middleware autoryzacji: req.user.id)
-    const fallbackOwnerId = '00000000-0000-0000-0000-000000000000';
-
     const createPetDto: CreatePetDTO = {
       ...validatedBody,
-      ownerId: req.user?.id || fallbackOwnerId,
+      ownerId: req.user!.id,
     };
 
     const result = await petsService.reportMissingPet(createPetDto);

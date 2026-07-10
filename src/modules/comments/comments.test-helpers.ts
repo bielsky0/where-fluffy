@@ -26,6 +26,7 @@ export const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
   status: 'missing',
   reward: 100,
   phone: null,
+  email: null,
   distinguishingMarks: null,
   photoUrl: null,
   photoUrls: [],

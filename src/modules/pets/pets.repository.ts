@@ -10,7 +10,7 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
   // ma typ TEXT (Prisma String), a Postgres nie ma operatora text = uuid.
   const findById = async (id: string): Promise<IPet | null> => {
     const [pet] = await prisma.$queryRaw<RawPetRow[]>`
-      SELECT id, name, species, status, category, reward, phone, "distinguishingMarks", "photoUrl",
+      SELECT id, name, species, status, category, reward, phone, email, "distinguishingMarks", "photoUrl",
              "photoUrls", city, "ownerId", "createdAt", "updatedAt",
              ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
       FROM "Pet"
@@ -26,16 +26,16 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     // zahardkodowany — patrz CreatePetDTO.status / addListingWizard StepFork.
     const [pet] = await prisma.$queryRaw<RawPetRow[]>`
       INSERT INTO "Pet" (
-        id, name, species, category, reward, phone, "distinguishingMarks", "photoUrl",
+        id, name, species, category, reward, phone, email, "distinguishingMarks", "photoUrl",
         "photoUrls", city, "ownerId", status, location, "updatedAt"
       )
       VALUES (
-        gen_random_uuid(), ${dto.name}, ${dto.species}, ${dto.category}, ${dto.reward},
-        ${dto.phone}, ${dto.distinguishingMarks ?? null}, ${dto.photoUrl ?? null},
+        gen_random_uuid(), ${dto.name ?? null}, ${dto.species}, ${dto.category}, ${dto.reward},
+        ${dto.phone ?? null}, ${dto.email ?? null}, ${dto.distinguishingMarks ?? null}, ${dto.photoUrl ?? null},
         ${dto.photoUrls}, ${dto.city}, ${dto.ownerId}, ${dto.status},
         ST_SetSRID(ST_MakePoint(${dto.location.lng}, ${dto.location.lat}), 4326)::geography, now()
       )
-      RETURNING id, name, species, status, category, reward, phone, "distinguishingMarks", "photoUrl",
+      RETURNING id, name, species, status, category, reward, phone, email, "distinguishingMarks", "photoUrl",
                 "photoUrls", city, "ownerId", "createdAt", "updatedAt",
                 ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng;
     `;
@@ -47,7 +47,7 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     const limitFragment = options.limit !== undefined ? Prisma.sql`LIMIT ${options.limit}` : Prisma.empty;
 
     const pets = await prisma.$queryRaw<RawPetRow[]>`
-      SELECT id, name, species, status, category, reward, phone, "distinguishingMarks", "photoUrl",
+      SELECT id, name, species, status, category, reward, phone, email, "distinguishingMarks", "photoUrl",
              "photoUrls", city, "ownerId", "createdAt", "updatedAt",
              ST_Y(location::geometry) as lat,
              ST_X(location::geometry) as lng

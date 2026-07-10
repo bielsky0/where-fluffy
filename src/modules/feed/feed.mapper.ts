@@ -5,7 +5,7 @@ import { IFeedPet } from './interfaces/feed.interface.js';
 // Typ pomocniczy dla bazy danych (odzwierciedla to, co zwraca PostGIS po ST_X/ST_Y/ST_Distance)
 export type RawFeedPetRow = {
   id: string;
-  name: string;
+  name: string | null;
   species: string;
   status: string;
   category: string;

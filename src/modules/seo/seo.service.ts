@@ -18,9 +18,11 @@ export const createSeoService = (petsService: PetsService, frontendBaseUrl: stri
 
     const statusPhrase = pet.status === 'missing' ? 'Zaginął' : 'Widziany';
     const cityPhrase = pet.city ? ` w ${pet.city}` : '';
+    // Znalazca może nie znać imienia zwierzaka (Kreator V2) — pet.name może być null.
+    const displayName = pet.name ?? `Znaleziony ${pet.species.toLowerCase()}`;
 
     return buildOgPreviewHtml({
-      title: `${statusPhrase}: ${pet.name}${cityPhrase} — Where's Fluffy`,
+      title: `${statusPhrase}: ${displayName}${cityPhrase} — Where's Fluffy`,
       description: `${pet.species}. Pomóż w poszukiwaniach — zobacz zgłoszenie i zgłoś zaobserwowanie.`,
       // TODO: pageUrl currently points at the in-app route (behind app-shell chrome), not a
       // dedicated public share URL — see the open assumption in the pet-detail-page plan about

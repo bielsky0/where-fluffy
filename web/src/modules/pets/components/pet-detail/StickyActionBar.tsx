@@ -21,7 +21,13 @@ interface StickyActionBarProps {
 // duplication, not a move) since it still reads naturally right beside the primary CTA.
 export function StickyActionBar({ pet, onReportSighting, onShare }: StickyActionBarProps) {
   const runProtected = useProtectedAction();
-  const handleReportClick = () => runProtected(onReportSighting);
+  // resumeIntent: a guest who taps this, then completes a full-page OAuth redirect, needs to
+  // land back on this exact pet with the sighting sheet already open — see
+  // PetDetailPage.tsx's resume-on-landing effect, which reads this back via readFreshIntent().
+  const handleReportClick = () =>
+    runProtected(onReportSighting, {
+      resumeIntent: { kind: 'report-sighting', petId: pet.id, returnPath: `/app/pets/${pet.id}` },
+    });
 
   return (
     <div className="flex shrink-0 flex-col border-t bg-white pb-safe" style={{ borderColor: HAIRLINE_BORDER }}>

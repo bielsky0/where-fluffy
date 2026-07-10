@@ -14,6 +14,10 @@ const LandingPage = asyncComponent(
   <p>Loading…</p>,
 );
 const LoginPage = asyncComponent(() => import('@/modules/auth/pages/LoginPage'), <p>Loading…</p>);
+const OAuthCallbackPage = asyncComponent(
+  () => import('@/modules/auth/pages/OAuthCallbackPage'),
+  <p>Loading…</p>,
+);
 
 // Private side — AppShell is now the ride-hailing-style main view itself (map + bottom sheet +
 // action bar), not a layout wrapping an <Outlet/> — so it's a leaf route, not a parent with
@@ -31,6 +35,9 @@ const PetDetailPage = asyncComponent(
 export const router = createBrowserRouter([
   { path: '/', element: <LandingPage /> },
   { path: '/login', element: <LoginPage /> },
+  // The one fixed landing target for every OAuth redirect (see auth.oauth.controller.ts) —
+  // success or failure, Google or Facebook, always ends up here first before resuming/erroring.
+  { path: '/auth/callback', element: <OAuthCallbackPage /> },
   { path: '/app', element: <AppShell /> },
   {
     path: '/app/chat',

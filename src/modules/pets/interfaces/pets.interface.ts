@@ -3,7 +3,8 @@ import { PetCategory } from '../pets.category.js';
 
 export interface IPet {
   id: string;
-  name: string;
+  // Opcjonalne: Znalazca nie podaje imienia (patrz pets.schema.ts's createPetSchema refine).
+  name: string | null;
   species: string;
   category: PetCategory;
   // Ujednolicamy strukturę lokalizacji
@@ -15,6 +16,7 @@ export interface IPet {
   status: 'missing' | 'found';
   reward: number;
   phone: string | null;
+  email: string | null;
   distinguishingMarks: string | null;
   photoUrl: string | null;
   photoUrls: string[];

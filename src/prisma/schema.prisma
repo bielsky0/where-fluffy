@@ -10,14 +10,23 @@ datasource db {
 }
 
 model User {
-  id          String     @id @default(uuid())
-  email       String?    @unique
-  password    String?
-  phone       String?    @unique
-  isGhost     Boolean    @default(false)
-  name        String
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id            String     @id @default(uuid())
+  email         String?    @unique
+  password      String?
+  phone         String?    @unique
+  isGhost       Boolean    @default(false)
+  // OAuth (Google/Facebook) — patrz auth.repository.ts's findOrCreateOAuthUser. Oba pola razem
+  // tworzą tożsamość dostawcy; NULL/NULL dla kont hasłowych i Ghost Account (OTP), więc
+  // @@unique poniżej jest no-opem dla istniejących wierszy (Postgres pozwala na wiele NULL-i
+  // w unikalnym indeksie).
+  provider      String?
+  providerId    String?
+  // true dla kont OAuth (dostawca już zweryfikował e-mail) i dla Ghost Account po udanym
+  // verifyOtp (odebranie kodu na e-mail też jest dowodem własności) — patrz auth.service.ts.
+  emailVerified Boolean    @default(false)
+  name          String
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   // Relacje odwrotne (Prisma ich wymaga do mapowania)
   pets        Pet[]
@@ -25,29 +34,34 @@ model User {
   ownerChats  ChatRoom[] @relation("OwnerChats")
   finderChats ChatRoom[] @relation("FinderChats")
   messages    Message[]
+
+  @@unique([provider, providerId])
 }
 
-// Kod OTP dla logowania bez hasła (ghost accounts). "identifier" to e-mail albo telefon podany
-// przez użytkownika — rozłączony od User, bo w momencie żądania kodu konto może jeszcze nie
-// istnieć (patrz auth.service.ts's verifyOtp / findOrCreateGhostUser).
+// Kod OTP dla logowania bez hasła (ghost accounts). Tylko e-mail (SMS nigdy nie jest wysyłany —
+// patrz specyfikacja "Bezkosztowy, Jednolity System Autoryzacji") — rozłączony od User, bo w
+// momencie żądania kodu konto może jeszcze nie istnieć (patrz auth.service.ts's verifyOtp /
+// findOrCreateGhostUser).
 model OtpCode {
-  id         String   @id @default(uuid())
-  identifier String
-  code       String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
-  @@index([identifier])
+  @@index([email])
 }
 
 model Pet {
   id                  String   @id @default(uuid())
-  name                String
+  // Opcjonalne: Znalazca nie zna imienia zwierzaka (Kreator V2, ścieżka "Znalazłem zwierzaka").
+  name                String?
   species             String
   status              String   @default("missing")
   category            String   @default("other")
   reward              Int      @default(0) // Przywrócone pole reward
   phone               String?
+  email               String?
   distinguishingMarks String?
   photoUrl            String?
   photoUrls           String[] @default([])

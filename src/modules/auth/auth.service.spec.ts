@@ -1,7 +1,14 @@
 import { createAuthService } from './auth.service.js';
-import { AuthRepository, EMAIL_ALREADY_EXISTS_ERROR, PasswordHasher, TokenService } from './interface/auth.interface.js';
+import {
+  AuthRepository,
+  EMAIL_ALREADY_EXISTS_ERROR,
+  EmailSender,
+  PasswordHasher,
+  TokenService,
+} from './interface/auth.interface.js';
 import {
   buildLoginDto,
+  buildMockEmailSender,
   buildMockHasher,
   buildMockRepository,
   buildMockTokenService,
@@ -13,11 +20,13 @@ describe('createAuthService', () => {
   let mockRepository: jest.Mocked<AuthRepository>;
   let mockHasher: jest.Mocked<PasswordHasher>;
   let mockTokenService: jest.Mocked<TokenService>;
+  let mockEmailSender: jest.Mocked<EmailSender>;
 
   beforeEach(() => {
     mockRepository = buildMockRepository();
     mockHasher = buildMockHasher();
     mockTokenService = buildMockTokenService();
+    mockEmailSender = buildMockEmailSender();
   });
 
   describe('register', () => {
@@ -25,7 +34,7 @@ describe('createAuthService', () => {
       mockRepository.findByEmail.mockResolvedValue(null);
       mockHasher.hash.mockResolvedValue('hashed-value');
       mockRepository.create.mockResolvedValue(buildUser({ password: 'hashed-value' }));
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       await service.register(buildRegisterDto({ password: 'plainTextPassword123' }));
 
@@ -40,7 +49,7 @@ describe('createAuthService', () => {
       mockRepository.findByEmail.mockResolvedValue(null);
       mockHasher.hash.mockResolvedValue('hashed-value');
       mockRepository.create.mockResolvedValue(buildUser({ id: 'user-99', password: 'hashed-value' }));
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       const result = await service.register(buildRegisterDto());
 
@@ -50,6 +59,9 @@ describe('createAuthService', () => {
         name: 'Jane Doe',
         phone: null,
         isGhost: false,
+        provider: null,
+        providerId: null,
+        emailVerified: false,
         createdAt: expect.any(Date),
         updatedAt: expect.any(Date),
       });
@@ -58,7 +70,7 @@ describe('createAuthService', () => {
 
     it('rejects with a 400 when the email is already registered, without calling the hasher or repository.create', async () => {
       mockRepository.findByEmail.mockResolvedValue(buildUser());
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       await expect(service.register(buildRegisterDto())).rejects.toMatchObject({
         statusCode: 400,
@@ -70,7 +82,7 @@ describe('createAuthService', () => {
 
     it('rejects with a 400 when the password is empty', async () => {
       mockRepository.findByEmail.mockResolvedValue(null);
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       await expect(service.register(buildRegisterDto({ password: '' }))).rejects.toMatchObject({
         statusCode: 400,
@@ -83,7 +95,7 @@ describe('createAuthService', () => {
       mockRepository.findByEmail.mockResolvedValue(null); // przeszło proaktywny check...
       mockHasher.hash.mockResolvedValue('hashed-value');
       mockRepository.create.mockRejectedValue(new Error(EMAIL_ALREADY_EXISTS_ERROR)); // ...ale przegrało wyścig
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       await expect(service.register(buildRegisterDto())).rejects.toMatchObject({
         statusCode: 400,
@@ -95,7 +107,7 @@ describe('createAuthService', () => {
       mockRepository.findByEmail.mockResolvedValue(null);
       mockHasher.hash.mockResolvedValue('hashed-value');
       mockRepository.create.mockRejectedValue(new Error('connection refused'));
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       await expect(service.register(buildRegisterDto())).rejects.toThrow('connection refused');
     });
@@ -107,7 +119,7 @@ describe('createAuthService', () => {
       mockRepository.findByEmail.mockResolvedValue(storedUser);
       mockHasher.compare.mockResolvedValue(true);
       mockTokenService.sign.mockReturnValue('signed.jwt.token');
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       const result = await service.login(buildLoginDto({ password: 'plainTextPassword123' }));
 
@@ -125,7 +137,7 @@ describe('createAuthService', () => {
 
     it('rejects with a 401 when no user matches the email', async () => {
       mockRepository.findByEmail.mockResolvedValue(null);
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       await expect(service.login(buildLoginDto())).rejects.toMatchObject({
         statusCode: 401,
@@ -137,7 +149,7 @@ describe('createAuthService', () => {
 
     it('rejects with a 401 when the stored user has no password set', async () => {
       mockRepository.findByEmail.mockResolvedValue(buildUser({ password: undefined }));
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       await expect(service.login(buildLoginDto())).rejects.toMatchObject({ statusCode: 401 });
       expect(mockHasher.compare).not.toHaveBeenCalled();
@@ -146,7 +158,7 @@ describe('createAuthService', () => {
     it('rejects with a 401 when the password does not match', async () => {
       mockRepository.findByEmail.mockResolvedValue(buildUser());
       mockHasher.compare.mockResolvedValue(false);
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       await expect(service.login(buildLoginDto())).rejects.toMatchObject({
         statusCode: 401,
@@ -163,63 +175,127 @@ describe('createAuthService', () => {
       process.env.NODE_ENV = ORIGINAL_NODE_ENV;
     });
 
-    it('generates a 6-digit code, persists it via repository.createOtp, and echoes it back outside production', async () => {
+    it('generates a 6-digit code, persists it via repository.createOtp, echoes it back, and does not send a real email outside production', async () => {
       process.env.NODE_ENV = 'test';
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       const result = await service.requestOtp('jane@example.com');
 
       expect(mockRepository.createOtp).toHaveBeenCalledTimes(1);
-      const [identifier, code, expiresAt] = mockRepository.createOtp.mock.calls[0];
-      expect(identifier).toBe('jane@example.com');
+      const [email, code, expiresAt] = mockRepository.createOtp.mock.calls[0];
+      expect(email).toBe('jane@example.com');
       expect(code).toMatch(/^\d{6}$/);
       expect(expiresAt.getTime()).toBeGreaterThan(Date.now());
       expect(result.devCode).toBe(code);
+      expect(mockEmailSender.sendOtpEmail).not.toHaveBeenCalled();
     });
 
-    it('does not echo the code back when NODE_ENV is production', async () => {
+    it('sends a real email and does not echo the code back when NODE_ENV is production', async () => {
       process.env.NODE_ENV = 'production';
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      mockEmailSender.sendOtpEmail.mockResolvedValue(undefined);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       const result = await service.requestOtp('jane@example.com');
 
       expect(result.devCode).toBeUndefined();
+      expect(mockEmailSender.sendOtpEmail).toHaveBeenCalledTimes(1);
+      const [to, code] = mockEmailSender.sendOtpEmail.mock.calls[0];
+      expect(to).toBe('jane@example.com');
+      expect(code).toMatch(/^\d{6}$/);
     });
   });
 
   describe('verifyOtp', () => {
-    it('rejects with a 401 for a missing or expired code, without creating any user', async () => {
-      mockRepository.findValidOtp.mockResolvedValue(null);
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+    it('rejects with a 401/OTP_CODE_INVALID when no matching code exists, without creating any user', async () => {
+      mockRepository.findOtpByCode.mockResolvedValue(null);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
       await expect(service.verifyOtp('jane@example.com', '123456')).rejects.toMatchObject({
         statusCode: 401,
-        message: 'Nieprawidłowy lub wygasły kod',
+        message: 'Niepoprawny kod',
+        code: 'OTP_CODE_INVALID',
       });
       expect(mockRepository.findOrCreateGhostUser).not.toHaveBeenCalled();
     });
 
+    it('rejects with a 401/OTP_CODE_EXPIRED when the code matches but has expired, without creating any user', async () => {
+      mockRepository.findOtpByCode.mockResolvedValue({ id: 'otp-1', expiresAt: new Date(Date.now() - 1000) });
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
+
+      await expect(service.verifyOtp('jane@example.com', '123456')).rejects.toMatchObject({
+        statusCode: 401,
+        message: 'Kod wygasł',
+        code: 'OTP_CODE_EXPIRED',
+      });
+      expect(mockRepository.deleteOtp).not.toHaveBeenCalled();
+      expect(mockRepository.findOrCreateGhostUser).not.toHaveBeenCalled();
+    });
+
     it('deletes the consumed OTP, finds-or-creates a ghost user, and returns a signed token', async () => {
-      mockRepository.findValidOtp.mockResolvedValue({ id: 'otp-1' });
+      mockRepository.findOtpByCode.mockResolvedValue({ id: 'otp-1', expiresAt: new Date(Date.now() + 1000) });
       const ghostUser = buildUser({
         id: 'ghost-1',
-        email: null,
-        phone: '600100200',
+        email: 'ghost@example.com',
         isGhost: true,
+        emailVerified: true,
         password: null,
         name: 'Gość',
       });
       mockRepository.findOrCreateGhostUser.mockResolvedValue(ghostUser);
       mockTokenService.sign.mockReturnValue('signed.jwt.token');
-      const service = createAuthService(mockRepository, mockHasher, mockTokenService);
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
 
-      const result = await service.verifyOtp('600100200', '123456');
+      const result = await service.verifyOtp('ghost@example.com', '123456');
 
       expect(mockRepository.deleteOtp).toHaveBeenCalledWith('otp-1');
-      expect(mockRepository.findOrCreateGhostUser).toHaveBeenCalledWith('600100200');
-      expect(mockTokenService.sign).toHaveBeenCalledWith({ id: 'ghost-1', email: null, name: 'Gość' });
+      expect(mockRepository.findOrCreateGhostUser).toHaveBeenCalledWith('ghost@example.com');
+      expect(mockTokenService.sign).toHaveBeenCalledWith({
+        id: 'ghost-1',
+        email: 'ghost@example.com',
+        name: 'Gość',
+      });
       expect(result).toEqual({
-        user: { id: 'ghost-1', email: null, name: 'Gość' },
+        user: { id: 'ghost-1', email: 'ghost@example.com', name: 'Gość' },
+        token: 'signed.jwt.token',
+      });
+    });
+  });
+
+  describe('loginWithOAuth', () => {
+    it('finds-or-creates the OAuth user via the repository and returns a signed token', async () => {
+      const oauthUser = buildUser({
+        id: 'oauth-1',
+        email: 'jane@gmail.com',
+        password: null,
+        isGhost: false,
+        provider: 'google',
+        providerId: 'google-sub-123',
+        emailVerified: true,
+        name: 'Jane Doe',
+      });
+      mockRepository.findOrCreateOAuthUser.mockResolvedValue(oauthUser);
+      mockTokenService.sign.mockReturnValue('signed.jwt.token');
+      const service = createAuthService(mockRepository, mockHasher, mockTokenService, mockEmailSender);
+
+      const result = await service.loginWithOAuth('google', {
+        providerId: 'google-sub-123',
+        email: 'jane@gmail.com',
+        name: 'Jane Doe',
+      });
+
+      expect(mockRepository.findOrCreateOAuthUser).toHaveBeenCalledWith(
+        'google',
+        'google-sub-123',
+        'jane@gmail.com',
+        'Jane Doe',
+      );
+      expect(mockTokenService.sign).toHaveBeenCalledWith({
+        id: 'oauth-1',
+        email: 'jane@gmail.com',
+        name: 'Jane Doe',
+      });
+      expect(result).toEqual({
+        user: { id: 'oauth-1', email: 'jane@gmail.com', name: 'Jane Doe' },
         token: 'signed.jwt.token',
       });
     });

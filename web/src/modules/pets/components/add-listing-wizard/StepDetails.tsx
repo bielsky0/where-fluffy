@@ -7,17 +7,22 @@ import type { AddListingWizardData } from '../../store/useAddListingWizardStore'
 interface StepDetailsProps {
   register: UseFormRegister<AddListingWizardData>;
   errors: FieldErrors<AddListingWizardData>;
+  reportType: 'lost' | 'found' | null;
 }
 
 // Dog/cat/other, in that order — same bucket set and order the search wizard already uses
 // (SearchModal.tsx), reusing PET_TYPE_LABELS instead of hand-writing Polish labels a second time.
 const PET_TYPE_OPTIONS: PetTypeFilter[] = ['dog', 'cat', 'other'];
 
-// Step 4 — collects everything the backend's createPetSchema needs beyond location/photo: name,
-// pet type, description, contact phone, reward, and distinguishing marks (see
-// addListingWizard.schema.ts's stepDetailsSchema). The actual "Opublikuj" action lives on the
-// review step (StepReview.tsx) that follows this one.
-export function StepDetails({ register, errors }: StepDetailsProps) {
+// Step 4 — "Dynamiczny podział formularza" (V2 spec): fields branch on reportType (chosen in
+// step 1). Lost (Właściciel): name + reward on top of the shared fields, richer description
+// framing. Found (Znalazca): no name, no reward, a "state/whereabouts" description framing —
+// Znalazca doesn't know the pet's history and shouldn't be made to invent one. Both paths end in
+// a shared contact section (phone/email, at least one required — see addListingWizard.schema.ts's
+// contactRefine) that feeds directly into OTP verification once this step's submit button
+// ("Weryfikuj i opublikuj", see AddListingWizard.tsx) is tapped.
+export function StepDetails({ register, errors, reportType }: StepDetailsProps) {
+  const isFound = reportType === 'found';
   const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
   const { ref: registerDescriptionRef, ...descriptionField } = register('description');
 
@@ -37,24 +42,26 @@ export function StepDetails({ register, errors }: StepDetailsProps) {
         <p className="text-sm text-subtle">Podaj podstawowe informacje — pomogą innym szybciej rozpoznać zwierzaka.</p>
       </div>
 
-      {/* "Basic Info" — name + type sit in a single compact row, visually distinct (bordered
-          card) from the large, prominent description field below. */}
+      {/* "Basic Info" — name (lost only) + type sit in a single compact row, visually distinct
+          (bordered card) from the large, prominent description field below. */}
       <div className="flex flex-col gap-1 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex gap-4">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <label htmlFor="wizard-name" className="text-sm font-medium text-ink">
-              Imię zwierzaka
-            </label>
-            <input
-              id="wizard-name"
-              type="text"
-              {...register('name')}
-              placeholder="np. Burek"
-              className="h-11 rounded-lg border border-gray-300 bg-white px-3.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral"
-            />
-          </div>
+          {!isFound && (
+            <div className="flex flex-1 flex-col gap-1.5">
+              <label htmlFor="wizard-name" className="text-sm font-medium text-ink">
+                Imię zwierzaka
+              </label>
+              <input
+                id="wizard-name"
+                type="text"
+                {...register('name')}
+                placeholder="np. Burek"
+                className="h-11 rounded-lg border border-gray-300 bg-white px-3.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral"
+              />
+            </div>
+          )}
 
-          <div className="flex w-32 flex-col gap-1.5 sm:w-36">
+          <div className={cn('flex flex-col gap-1.5', isFound ? 'flex-1' : 'w-32 sm:w-36')}>
             <span className="text-sm font-medium text-ink">Rodzaj</span>
             <div className="flex flex-col gap-1.5">
               {PET_TYPE_OPTIONS.map((option) => (
@@ -74,8 +81,10 @@ export function StepDetails({ register, errors }: StepDetailsProps) {
         </div>
 
         <div className="flex gap-4 empty:hidden">
-          {errors.name && <p className="flex-1 text-xs text-destructive">{errors.name.message}</p>}
-          {errors.petType && <p className="w-32 text-xs text-destructive sm:w-36">Wybierz rodzaj</p>}
+          {!isFound && errors.name && <p className="flex-1 text-xs text-destructive">{errors.name.message}</p>}
+          {errors.petType && (
+            <p className={cn('text-xs text-destructive', isFound ? 'flex-1' : 'w-32 sm:w-36')}>Wybierz rodzaj</p>
+          )}
         </div>
       </div>
 
@@ -91,7 +100,11 @@ export function StepDetails({ register, errors }: StepDetailsProps) {
             descriptionRef.current = element;
           }}
           rows={5}
-          placeholder="Kiedy i gdzie widziano zwierzaka ostatni raz? Jakieś charakterystyczne cechy?"
+          placeholder={
+            isFound
+              ? 'W jakim stanie jest zwierzak? Gdzie dokładnie przebywa lub w którą stronę się kieruje?'
+              : 'Opisz cechy charakteru zwierzaka i okoliczności zaginięcia'
+          }
           className="flex-1 resize-none rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral"
         />
         {errors.description && <p className="text-xs text-destructive">{errors.description.message}</p>}
@@ -113,10 +126,33 @@ export function StepDetails({ register, errors }: StepDetailsProps) {
         )}
       </div>
 
-      <div className="flex gap-4">
-        <div className="flex flex-1 flex-col gap-1.5">
+      {!isFound && (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="wizard-reward" className="text-sm font-medium text-ink">
+            Nagroda (zł, opcjonalnie)
+          </label>
+          <input
+            id="wizard-reward"
+            type="number"
+            min={0}
+            inputMode="numeric"
+            {...register('reward', { valueAsNumber: true })}
+            placeholder="0"
+            className="h-11 w-32 rounded-lg border border-gray-300 bg-white px-3.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral sm:w-36"
+          />
+          {errors.reward && <p className="text-xs text-destructive">{errors.reward.message}</p>}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-ink">Dane kontaktowe</span>
+          <p className="text-xs text-subtle">Podaj telefon lub e-mail — wystarczy jedno z pól.</p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
           <label htmlFor="wizard-phone" className="text-sm font-medium text-ink">
-            Telefon kontaktowy
+            Telefon
           </label>
           <input
             id="wizard-phone"
@@ -126,24 +162,26 @@ export function StepDetails({ register, errors }: StepDetailsProps) {
             placeholder="np. 600 100 200"
             className="h-11 rounded-lg border border-gray-300 bg-white px-3.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral"
           />
-          {errors.phone && <p className="text-xs text-destructive">{errors.phone.message}</p>}
         </div>
 
-        <div className="flex w-32 flex-col gap-1.5 sm:w-36">
-          <label htmlFor="wizard-reward" className="text-sm font-medium text-ink">
-            Nagroda (zł)
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="wizard-email" className="text-sm font-medium text-ink">
+            E-mail
           </label>
           <input
-            id="wizard-reward"
-            type="number"
-            min={0}
-            inputMode="numeric"
-            {...register('reward', { valueAsNumber: true })}
-            placeholder="0"
+            id="wizard-email"
+            type="email"
+            {...register('email')}
+            placeholder="np. jan@example.com"
             className="h-11 rounded-lg border border-gray-300 bg-white px-3.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral"
           />
-          {errors.reward && <p className="text-xs text-destructive">{errors.reward.message}</p>}
         </div>
+
+        {(errors.phone || errors.email) && (
+          <p className="text-xs text-destructive">
+            {errors.phone?.message || errors.email?.message || 'Podaj telefon lub e-mail'}
+          </p>
+        )}
       </div>
     </div>
   );

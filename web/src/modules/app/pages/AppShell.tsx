@@ -1,9 +1,11 @@
+import { useEffect, useRef } from 'react';
 import { usePetMapStore } from '@/modules/pets/store/usePetMapStore';
 import { AddListingWizard } from '@/modules/pets/components/add-listing-wizard';
 import { MapExplorerPage } from '@/modules/pets/pages/MapExplorerPage';
 import ProfilePage from '@/modules/profile/pages/ProfilePage';
 import { useAuthStore } from '@/modules/auth/store/useAuthStore';
 import { useProtectedAction } from '@/modules/auth/hooks/useProtectedAction';
+import { readFreshIntent } from '@/modules/auth/store/usePendingIntentStore';
 import { useAppUIStore } from '@/modules/app/store/useAppUIStore';
 import { BottomNav, type NavAction } from '@/modules/app/components/BottomNav';
 import { GuestTabBar, type GuestNavAction } from '@/modules/app/components/GuestTabBar';
@@ -104,8 +106,24 @@ export default function AppShell() {
       runAction(action === 'add' ? 'report' : 'list');
       return;
     }
-    runProtected(() => runAction('list'));
+    // resumeIntent: landing back on /app authenticated (after a real OAuth redirect) already
+    // satisfies this — no extra action to replay, unlike wizard-publish/report-sighting below.
+    runProtected(() => runAction('list'), { resumeIntent: { kind: 'app-navigate', returnPath: '/app' } });
   };
+
+  // Resume-on-landing: a guest who reached the wizard's guest-checkout step, then completed a
+  // full-page OAuth redirect, comes back here with no in-memory state at all — isAddReportOpen
+  // defaults to false again. Reopen the wizard modal; AddListingWizard's own resume effect (see
+  // that file) is what actually re-triggers the publish call and clears the intent, once it's
+  // mounted and can read the persisted draft. Runs once per mount.
+  const hasCheckedResumeIntent = useRef(false);
+  useEffect(() => {
+    if (hasCheckedResumeIntent.current) return;
+    hasCheckedResumeIntent.current = true;
+    if (readFreshIntent()?.kind === 'wizard-publish') {
+      openAddReport();
+    }
+  }, [openAddReport]);
 
   const activeAction: NavAction | undefined =
     activeView === 'feed' ? 'list' : activeView === 'profile' ? 'profile' : undefined;

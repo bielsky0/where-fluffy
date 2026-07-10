@@ -1,6 +1,7 @@
 import { Map } from '@/shared/components/map';
 import { CloseIcon } from './icons';
 import type { Pet, PetStatus } from '../../types/pet.types';
+import { getPetDisplayInitial, getPetDisplayName } from '../../lib/format';
 
 const STATUS_HEADLINE: Record<PetStatus, string> = {
   missing: 'ZAGINĄŁ',
@@ -33,10 +34,10 @@ export function StoryModeOverlay({ pet, onClose }: StoryModeOverlayProps) {
 
       <div className="relative flex-[3] overflow-hidden">
         {photo ? (
-          <img src={photo} alt={pet.name} className="size-full object-cover" />
+          <img src={photo} alt={getPetDisplayName(pet)} className="size-full object-cover" />
         ) : (
           <div className="flex size-full items-center justify-center bg-neutral-900">
-            <span className="text-9xl font-bold text-neutral-700">{pet.name.charAt(0).toUpperCase()}</span>
+            <span className="text-9xl font-bold text-neutral-700">{getPetDisplayInitial(pet)}</span>
           </div>
         )}
         <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/90 to-transparent" />
@@ -53,7 +54,7 @@ export function StoryModeOverlay({ pet, onClose }: StoryModeOverlayProps) {
             {STATUS_HEADLINE[pet.status]}
             {cityPhrase}
           </h1>
-          <p className="text-lg font-semibold text-white/90">{pet.name}</p>
+          <p className="text-lg font-semibold text-white/90">{getPetDisplayName(pet)}</p>
         </div>
       </div>
 

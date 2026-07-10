@@ -17,7 +17,8 @@ export interface ChatRoomSummary {
   roomId: string;
   pet: {
     id: string;
-    name: string;
+    // Nullable: a Znalazca (finder, V2 wizard) may not know the pet's name.
+    name: string | null;
     status: string;
   };
   interlocutor: {

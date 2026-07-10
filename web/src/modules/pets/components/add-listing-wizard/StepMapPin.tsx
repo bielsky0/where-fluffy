@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Map } from '@/shared/components/map';
 import type { Coordinate } from '@/shared/components/map';
 import { getCurrentPosition } from '@/shared/lib/geolocation';
+import { useLocationSearch } from '@/modules/geocode/api/useLocationSearch';
 import type { AddListingWizardData } from '../../store/useAddListingWizardStore';
 
 interface StepMapPinProps {
@@ -61,10 +62,12 @@ function MapPinField({
         </h1>
         <p className="text-sm text-subtle">
           {reportType === 'found'
-            ? 'Przesuń mapę, aby zaznaczyć, gdzie znalazłeś/aś zwierzaka.'
-            : 'Przesuń mapę, aby ustawić dokładne miejsce zaginięcia.'}
+            ? 'Wyszukaj adres lub przesuń mapę, aby zaznaczyć, gdzie znalazłeś/aś zwierzaka.'
+            : 'Wyszukaj adres lub przesuń mapę, aby ustawić dokładne miejsce zaginięcia.'}
         </p>
       </div>
+
+      <AddressSearchBar onSelect={(coord) => setFocusTarget(coord)} />
 
       <div className="relative flex-1">
         {/* z-0 (not the default z-index:auto) is load-bearing here: Leaflet's own panes/controls
@@ -127,6 +130,71 @@ function MapPinField({
         </div>
       </div>
     </div>
+  );
+}
+
+// Text search above the map, feeding the same focusTarget/onCenterChange round-trip the "my
+// location" crosshair button already uses below — selecting a result pans/zooms the map there
+// (Map's `focusCenter` prop), and the actual coordinate still only gets committed once Leaflet's
+// `moveend` fires `onCenterChange` (see MapPinField above), so a subsequent manual drag to
+// fine-tune the pin works exactly as it already does today.
+function AddressSearchBar({ onSelect }: { onSelect: (coord: Coordinate) => void }) {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const { data: results, isFetching } = useLocationSearch(query);
+  const trimmedLength = query.trim().length;
+
+  return (
+    <div className="relative px-6">
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-subtle">
+          <SearchIcon />
+        </span>
+        <input
+          type="text"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          placeholder="Wyszukaj adres lub okolicę"
+          className="h-11 w-full rounded-full border border-gray-300 bg-white pl-10 pr-4 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral"
+        />
+      </div>
+
+      {isOpen && trimmedLength >= 2 && (
+        <div className="absolute inset-x-6 top-[calc(100%+4px)] z-20 max-h-64 overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-lg">
+          {isFetching && <p className="px-4 py-3 text-sm text-subtle">Szukam…</p>}
+          {!isFetching && results?.length === 0 && (
+            <p className="px-4 py-3 text-sm text-subtle">Brak wyników</p>
+          )}
+          {results?.map((result) => (
+            <button
+              key={`${result.lat},${result.lng}`}
+              type="button"
+              onClick={() => {
+                onSelect({ lat: result.lat, lng: result.lng });
+                setQuery(result.label);
+                setIsOpen(false);
+              }}
+              className="block w-full px-4 py-3 text-left text-sm text-ink hover:bg-gray-50"
+            >
+              {result.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={16} height={16} fill="none" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+      <path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   );
 }
 

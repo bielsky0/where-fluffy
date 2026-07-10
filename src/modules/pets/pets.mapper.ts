@@ -5,12 +5,13 @@ import { PetCategory } from './pets.category.js';
 // Typ pomocniczy dla bazy danych (odzwierciedla to, co zwraca PostGIS po ST_X/ST_Y)
 export type RawPetRow = {
   id: string;
-  name: string;
+  name: string | null;
   species: string;
   status: string;
   category: string;
   reward: number;
   phone: string | null;
+  email: string | null;
   distinguishingMarks: string | null;
   photoUrl: string | null;
   photoUrls: string[];
@@ -31,6 +32,7 @@ export const mapToDomain = (row: RawPetRow): IPet => ({
   status: row.status as 'missing' | 'found',
   reward: Number(row.reward),
   phone: row.phone,
+  email: row.email,
   distinguishingMarks: row.distinguishingMarks,
   photoUrl: row.photoUrl,
   photoUrls: row.photoUrls,
@@ -50,6 +52,7 @@ export const mapToResponseDTO = (pet: IPet): PetResponseDTO => ({
   status: pet.status,
   reward: Number(pet.reward),
   phone: pet.phone,
+  email: pet.email,
   distinguishingMarks: pet.distinguishingMarks,
   photoUrl: pet.photoUrl,
   photoUrls: pet.photoUrls,

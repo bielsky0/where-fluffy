@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BackArrowIcon, ShareIcon, HeartIcon, CameraIcon } from './icons';
 import type { Pet } from '../../types/pet.types';
+import { getPetDisplayInitial, getPetDisplayName } from '../../lib/format';
 
 interface HeroGalleryProps {
   pet: Pet;
@@ -44,12 +45,12 @@ export function HeroGallery({ pet, onBack, onShare, onOpenLightbox, onOpenStoryM
               aria-hidden={index !== activeIndex}
               aria-label={`Zdjęcie ${index + 1} z ${photos.length}, powiększ`}
             >
-              <img src={url} alt={pet.name} className="size-full object-cover" />
+              <img src={url} alt={getPetDisplayName(pet)} className="size-full object-cover" />
             </button>
           ))
         ) : (
           <div className="flex h-full w-full shrink-0 snap-start items-center justify-center bg-neutral-100">
-            <span className="text-8xl font-bold text-neutral-300">{pet.name.charAt(0).toUpperCase()}</span>
+            <span className="text-8xl font-bold text-neutral-300">{getPetDisplayInitial(pet)}</span>
           </div>
         )}
       </div>

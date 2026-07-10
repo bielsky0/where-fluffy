@@ -2,7 +2,7 @@ import { memo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { motion, useAnimation } from 'framer-motion';
 import type { Coordinate } from '@/shared/components/map/types';
 import { cn } from '@/shared/lib/cn';
-import { distanceMeters, formatDistance, formatRelativeTime } from '../lib/format';
+import { distanceMeters, formatDistance, formatRelativeTime, getPetDisplayInitial, getPetDisplayName } from '../lib/format';
 import { PET_STATUS_LABEL } from '../lib/petStatus';
 import type { Pet } from '../types/pet.types';
 
@@ -44,7 +44,7 @@ function PetImage({ pet }: { pet: Pet }) {
       className="flex size-full items-center justify-center bg-neutral-100 text-6xl font-bold text-neutral-300"
       aria-hidden="true"
     >
-      {pet.name.charAt(0).toUpperCase()}
+      {getPetDisplayInitial(pet)}
     </div>
   );
 }
@@ -169,7 +169,7 @@ function PetCardComponent({
 
       <div className="flex flex-col gap-0.5 px-0.5">
         <p className="truncate text-[15px] font-semibold text-black">
-          {pet.name} • {pet.species}
+          {getPetDisplayName(pet)} • {pet.species}
         </p>
         <p className="truncate text-[13px] font-medium text-neutral-400">
           {STATUS_VERB[pet.status]} {formatRelativeTime(pet.createdAt)}

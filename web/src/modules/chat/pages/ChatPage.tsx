@@ -42,7 +42,7 @@ export default function ChatPage() {
           {rooms?.map((room) => (
             <li key={room.roomId}>
               <button type="button" onClick={() => setActiveRoomId(room.roomId)}>
-                {room.pet.name} — {room.interlocutor.name}
+                {room.pet.name ?? 'Zwierzak'} — {room.interlocutor.name}
               </button>
             </li>
           ))}

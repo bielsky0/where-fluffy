@@ -11,13 +11,13 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
-// Ghost Account flow — identifier to e-mail albo numer telefonu, rozróżniane w service.ts po
-// tym, czy przechodzi walidację e-maila (patrz auth.repository.ts's findOrCreateGhostUser).
+// Ghost Account flow — tylko e-mail (SMS nigdy nie jest wysyłany, patrz specyfikacja
+// "Bezkosztowy, Jednolity System Autoryzacji"), patrz auth.repository.ts's findOrCreateGhostUser.
 export const requestOtpSchema = z.object({
-  identifier: z.string().min(3, 'Podaj e-mail lub numer telefonu'),
+  email: z.string().email('Nieprawidłowy adres e-mail'),
 });
 
 export const verifyOtpSchema = z.object({
-  identifier: z.string().min(3, 'Podaj e-mail lub numer telefonu'),
+  email: z.string().email('Nieprawidłowy adres e-mail'),
   code: z.string().length(6, 'Kod musi mieć 6 cyfr'),
 });

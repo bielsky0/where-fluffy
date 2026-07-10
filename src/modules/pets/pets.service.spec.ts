@@ -14,6 +14,7 @@ const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
   status: 'missing',
   reward: 100,
   phone: '600100200',
+  email: null,
   distinguishingMarks: null,
   photoUrl: null,
   photoUrls: [],
@@ -30,6 +31,7 @@ const buildCreateDto = (overrides: Partial<CreatePetDTO> = {}): CreatePetDTO => 
   location: { lat: 52.2297, lng: 21.0122 },
   reward: 100,
   phone: '600100200',
+  photoBase64s: [],
   ownerId: 'owner-1',
   ...overrides,
 });
@@ -56,6 +58,7 @@ describe('createPetsService', () => {
   describe('reportMissingPet', () => {
     it('passes the DTO through to repository.save with a server-computed category', async () => {
       const dto = buildCreateDto();
+      const { photoBase64s: _photoBase64s, ...restDto } = dto;
       mockRepository.save.mockResolvedValue(buildPet());
       const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
 
@@ -63,7 +66,7 @@ describe('createPetsService', () => {
 
       expect(mockRepository.save).toHaveBeenCalledTimes(1);
       expect(mockRepository.save).toHaveBeenCalledWith({
-        ...dto,
+        ...restDto,
         category: 'dog',
         photoUrl: undefined,
         photoUrls: [],
@@ -78,33 +81,34 @@ describe('createPetsService', () => {
 
       await service.reportMissingPet(dto);
 
-      expect(mockRepository.save).toHaveBeenCalledWith({
-        ...dto,
-        category: 'cat',
-        photoUrl: undefined,
-        photoUrls: [],
-        city: null,
-      });
+      expect(mockRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ category: 'cat', photoUrl: undefined, photoUrls: [] }),
+      );
     });
 
-    it('stores the photo via PhotoService and threads the returned URL into repository.save', async () => {
-      const dto = buildCreateDto({ photoBase64: 'data:image/jpeg;base64,AAA' });
-      mockPhotoService.store.mockResolvedValue('data:image/jpeg;base64,AAA');
+    it('stores each photo via PhotoService and threads the returned URLs into repository.save', async () => {
+      const dto = buildCreateDto({
+        photoBase64s: ['data:image/jpeg;base64,AAA', 'data:image/jpeg;base64,BBB'],
+      });
+      mockPhotoService.store.mockResolvedValueOnce('data:image/jpeg;base64,AAA');
+      mockPhotoService.store.mockResolvedValueOnce('data:image/jpeg;base64,BBB');
       mockRepository.save.mockResolvedValue(buildPet({ photoUrl: 'data:image/jpeg;base64,AAA' }));
       const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
 
       await service.reportMissingPet(dto);
 
-      expect(mockPhotoService.store).toHaveBeenCalledWith('data:image/jpeg;base64,AAA');
+      expect(mockPhotoService.store).toHaveBeenCalledTimes(2);
+      expect(mockPhotoService.store).toHaveBeenNthCalledWith(1, 'data:image/jpeg;base64,AAA');
+      expect(mockPhotoService.store).toHaveBeenNthCalledWith(2, 'data:image/jpeg;base64,BBB');
       expect(mockRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({
           photoUrl: 'data:image/jpeg;base64,AAA',
-          photoUrls: ['data:image/jpeg;base64,AAA'],
+          photoUrls: ['data:image/jpeg;base64,AAA', 'data:image/jpeg;base64,BBB'],
         }),
       );
     });
 
-    it('skips PhotoService entirely when no photo was submitted', async () => {
+    it('skips PhotoService entirely when no photos were submitted', async () => {
       mockRepository.save.mockResolvedValue(buildPet());
       const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
 
@@ -128,6 +132,7 @@ describe('createPetsService', () => {
         status: savedPet.status,
         reward: 250,
         phone: savedPet.phone,
+        email: savedPet.email,
         distinguishingMarks: savedPet.distinguishingMarks,
         photoUrl: savedPet.photoUrl,
         photoUrls: savedPet.photoUrls,
@@ -165,6 +170,16 @@ describe('createPetsService', () => {
 
       expect(mockRepository.save).toHaveBeenCalledWith(expect.objectContaining({ city: null }));
     });
+
+    it('omits name from the saved record when reporting a found pet without one', async () => {
+      const dto = buildCreateDto({ status: 'found', name: undefined, reward: 0 });
+      mockRepository.save.mockResolvedValue(buildPet({ name: null, status: 'found' }));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+
+      await service.reportMissingPet(dto);
+
+      expect(mockRepository.save).toHaveBeenCalledWith(expect.objectContaining({ name: undefined }));
+    });
   });
 
   describe('getPetsNearby', () => {
@@ -185,6 +200,7 @@ describe('createPetsService', () => {
           status: nearbyPet.status,
           reward: nearbyPet.reward,
           phone: nearbyPet.phone,
+          email: nearbyPet.email,
           distinguishingMarks: nearbyPet.distinguishingMarks,
           photoUrl: nearbyPet.photoUrl,
           photoUrls: nearbyPet.photoUrls,

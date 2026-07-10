@@ -1,9 +1,9 @@
 export interface RequestOtpDTO {
-  identifier: string;
+  email: string;
 }
 
 export interface VerifyOtpDTO {
-  identifier: string;
+  email: string;
   code: string;
 }
 

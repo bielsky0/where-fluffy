@@ -1,6 +1,11 @@
 import {
   AuthRepository,
   EMAIL_ALREADY_EXISTS_ERROR,
+  EmailSender,
+  OAuthProfile,
+  OAuthProvider,
+  OTP_CODE_EXPIRED,
+  OTP_CODE_INVALID,
   OTP_CODE_LENGTH,
   OTP_TTL_MINUTES,
   PasswordHasher,
@@ -16,8 +21,9 @@ import { createAppError } from '../../shared/errors/app-error.js';
 export type AuthService = {
   register: (dto: RegisterDTO) => Promise<Omit<IUser, 'password'>>;
   login: (dto: LoginDTO) => Promise<AuthResponseDTO>;
-  requestOtp: (identifier: string) => Promise<RequestOtpResponseDTO>;
-  verifyOtp: (identifier: string, code: string) => Promise<AuthResponseDTO>;
+  requestOtp: (email: string) => Promise<RequestOtpResponseDTO>;
+  verifyOtp: (email: string, code: string) => Promise<AuthResponseDTO>;
+  loginWithOAuth: (provider: OAuthProvider, profile: OAuthProfile) => Promise<AuthResponseDTO>;
 };
 
 const generateOtpCode = (): string => {
@@ -31,6 +37,7 @@ export const createAuthService = (
   repository: AuthRepository,
   hasher: PasswordHasher,
   tokenService: TokenService,
+  emailSender: EmailSender,
 ): AuthService => {
   const register = async (dto: RegisterDTO): Promise<Omit<IUser, 'password'>> => {
     const existingUser = await repository.findByEmail(dto.email);
@@ -88,18 +95,24 @@ export const createAuthService = (
     };
   };
 
-  // Ghost Account flow, krok 1: generuje kod, zapisuje go w OtpCode (5 min TTL) — na razie tylko
-  // logujemy go (brak dostawcy e-mail/SMS, patrz CLAUDE.md/plan) i w trybie dev odsyłamy go w
-  // odpowiedzi, żeby dało się przetestować cały przepływ end-to-end bez prawdziwego dostawcy.
-  const requestOtp = async (identifier: string): Promise<RequestOtpResponseDTO> => {
+  // Ghost Account flow, krok 1: generuje kod, zapisuje go w OtpCode (5 min TTL) i wysyła e-mailem
+  // przez Resend (emailSender.sendOtpEmail) — tylko na produkcji, żeby nie zużywać limitu
+  // darmowego planu przy lokalnym developmencie. W trybie dev nadal tylko logujemy kod i
+  // odsyłamy go w odpowiedzi (devCode), żeby dało się przetestować cały przepływ end-to-end bez
+  // prawdziwego dostawcy.
+  const requestOtp = async (email: string): Promise<RequestOtpResponseDTO> => {
     const code = generateOtpCode();
     const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
-    await repository.createOtp(identifier, code, expiresAt);
-
-    // eslint-disable-next-line no-console
-    console.log(`[OTP] ${identifier} -> ${code} (wygasa o ${expiresAt.toISOString()})`);
+    await repository.createOtp(email, code, expiresAt);
 
     const isDev = process.env.NODE_ENV !== 'production';
+    if (isDev) {
+      // eslint-disable-next-line no-console
+      console.log(`[OTP] ${email} -> ${code} (wygasa o ${expiresAt.toISOString()})`);
+    } else {
+      await emailSender.sendOtpEmail(email, code);
+    }
+
     return {
       message: 'Kod został wysłany.',
       ...(isDev ? { devCode: code } : {}),
@@ -107,16 +120,19 @@ export const createAuthService = (
   };
 
   // Ghost Account flow, krok 2: weryfikuje kod, tworzy (lub odnajduje) konto powiązane z
-  // identyfikatorem i loguje dokładnie jak `login` — ten sam kształt AuthResponseDTO, żeby
-  // kontroler mógł ustawić to samo ciasteczko `token` bez dodatkowej logiki.
-  const verifyOtp = async (identifier: string, code: string): Promise<AuthResponseDTO> => {
-    const validOtp = await repository.findValidOtp(identifier, code);
-    if (!validOtp) {
-      throw createAppError(401, 'Nieprawidłowy lub wygasły kod');
+  // e-mailem i loguje dokładnie jak `login` — ten sam kształt AuthResponseDTO, żeby kontroler
+  // mógł ustawić to samo ciasteczko `token` bez dodatkowej logiki.
+  const verifyOtp = async (email: string, code: string): Promise<AuthResponseDTO> => {
+    const otp = await repository.findOtpByCode(email, code);
+    if (!otp) {
+      throw createAppError(401, 'Niepoprawny kod', true, OTP_CODE_INVALID);
     }
-    await repository.deleteOtp(validOtp.id);
+    if (otp.expiresAt <= new Date()) {
+      throw createAppError(401, 'Kod wygasł', true, OTP_CODE_EXPIRED);
+    }
+    await repository.deleteOtp(otp.id);
 
-    const user = await repository.findOrCreateGhostUser(identifier);
+    const user = await repository.findOrCreateGhostUser(email);
     const token = tokenService.sign({ id: user.id, email: user.email, name: user.name });
 
     return {
@@ -129,5 +145,22 @@ export const createAuthService = (
     };
   };
 
-  return { register, login, requestOtp, verifyOtp };
+  // OAuth (Google/Facebook): profil już zweryfikowany przez dostawcę (patrz
+  // auth.oauth.google.ts / auth.oauth.facebook.ts) — dowiązujemy/tworzymy konto i logujemy
+  // dokładnie jak login/verifyOtp, ten sam kształt AuthResponseDTO.
+  const loginWithOAuth = async (provider: OAuthProvider, profile: OAuthProfile): Promise<AuthResponseDTO> => {
+    const user = await repository.findOrCreateOAuthUser(provider, profile.providerId, profile.email, profile.name);
+    const token = tokenService.sign({ id: user.id, email: user.email, name: user.name });
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      },
+      token,
+    };
+  };
+
+  return { register, login, requestOtp, verifyOtp, loginWithOAuth };
 };

@@ -1,9 +1,15 @@
-export type AppError = Error & { statusCode: number; isOperational: boolean };
+export type AppError = Error & { statusCode: number; isOperational: boolean; code?: string };
 
-export const createAppError = (statusCode: number, message: string, isOperational = true): AppError => {
+export const createAppError = (
+  statusCode: number,
+  message: string,
+  isOperational = true,
+  code?: string,
+): AppError => {
   const error = new Error(message) as AppError;
   error.statusCode = statusCode;
   error.isOperational = isOperational;
+  if (code) error.code = code;
   return error;
 };
 

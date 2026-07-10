@@ -7,12 +7,15 @@ export type PetStatus = 'missing' | 'found';
 
 export interface Pet {
   id: string;
-  name: string;
+  // Opcjonalne: Znalazca może nie znać imienia zwierzaka (Kreator V2) — patrz Pet.name w
+  // schema.prisma.
+  name: string | null;
   species: string;
   category: PetTypeFilter;
   status: PetStatus;
   reward: number;
   phone: string | null;
+  email: string | null;
   distinguishingMarks: string | null;
   photoUrls: string[];
   city: string | null;
@@ -30,16 +33,19 @@ export interface NearbyPetsQuery {
 }
 
 // Matches CreatePetDTO (src/modules/pets/dto/create-pet.dto.ts) minus `ownerId` — the backend
-// derives that from the authenticated request, not the client. `photoBase64` is a compressed
-// data URL (see add-listing-wizard/lib/compressImage.ts), exchanged server-side for a stored
-// `photoUrl` (see photo.service.ts).
+// derives that from the authenticated request, not the client. `photoBase64s` are compressed
+// data URLs (see add-listing-wizard/lib/compressImage.ts), exchanged server-side for stored
+// `photoUrl`/`photoUrls` (see photo.service.ts). `name`/`reward` are omitted on the 'found' path
+// (Znalazca doesn't know the pet's name and isn't offered a reward field); `phone`/`email` are
+// each individually optional but the backend requires at least one of the two.
 export interface CreatePetReportPayload {
-  name: string;
+  name?: string;
   species: string;
   status: PetStatus;
   location: { lat: number; lng: number };
   reward: number;
-  phone: string;
+  phone?: string;
+  email?: string;
   distinguishingMarks?: string;
-  photoBase64?: string;
+  photoBase64s: string[];
 }

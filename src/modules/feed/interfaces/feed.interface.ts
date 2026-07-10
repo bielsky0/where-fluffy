@@ -6,7 +6,7 @@ export type FeedBbox = { minLng: number; minLat: number; maxLng: number; maxLat:
 
 export interface IFeedPet {
   id: string;
-  name: string;
+  name: string | null;
   species: string;
   category: PetCategory;
   status: 'missing' | 'found';

@@ -3,13 +3,19 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { createAuthService } from './auth.service.js';
 import { createAuthController } from './auth.controller.js';
-import { AuthRepository, PasswordHasher, TokenService } from './interface/auth.interface.js';
+import { AuthRepository, EmailSender, PasswordHasher, TokenService } from './interface/auth.interface.js';
 import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js';
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 import { errorHandler } from '../../shared/middleware/error.middleware.js';
 import { validate } from '../../shared/middleware/validate.js';
 import { loginSchema, registerSchema } from './auth.schema.js';
-import { buildMockHasher, buildMockRepository, buildMockTokenService, buildUser } from './auth.test-helpers.js';
+import {
+  buildMockEmailSender,
+  buildMockHasher,
+  buildMockRepository,
+  buildMockTokenService,
+  buildUser,
+} from './auth.test-helpers.js';
 
 // Prawdziwe `authenticate` middleware wymaga poprawnego JWT w cookie (własna suita poza zakresem
 // tego pliku — patrz auth.middleware.ts), więc dla /auth/me wstrzykujemy req.user bezpośrednio,
@@ -27,8 +33,13 @@ const fakeAuthenticate =
 // dependencies into the service, and the service into the controller". Walidacja (`validate`)
 // jest wpięta na poziomie trasy — tak jak w prawdziwym auth.routes.ts — bo kontroler już nie
 // robi jej sam (patrz shared/middleware/validate.ts).
-const buildTestApp = (repository: AuthRepository, hasher: PasswordHasher, tokenService: TokenService): Express => {
-  const authService = createAuthService(repository, hasher, tokenService);
+const buildTestApp = (
+  repository: AuthRepository,
+  hasher: PasswordHasher,
+  tokenService: TokenService,
+  emailSender: EmailSender,
+): Express => {
+  const authService = createAuthService(repository, hasher, tokenService, emailSender);
   const controller = createAuthController(authService);
 
   const app = express();
@@ -48,13 +59,15 @@ describe('auth controller (via supertest)', () => {
   let mockRepository: jest.Mocked<AuthRepository>;
   let mockHasher: jest.Mocked<PasswordHasher>;
   let mockTokenService: jest.Mocked<TokenService>;
+  let mockEmailSender: jest.Mocked<EmailSender>;
   let app: Express;
 
   beforeEach(() => {
     mockRepository = buildMockRepository();
     mockHasher = buildMockHasher();
     mockTokenService = buildMockTokenService();
-    app = buildTestApp(mockRepository, mockHasher, mockTokenService);
+    mockEmailSender = buildMockEmailSender();
+    app = buildTestApp(mockRepository, mockHasher, mockTokenService, mockEmailSender);
   });
 
   describe('POST /auth/register', () => {
@@ -76,6 +89,9 @@ describe('auth controller (via supertest)', () => {
         name: 'Jane Doe',
         phone: null,
         isGhost: false,
+        provider: null,
+        providerId: null,
+        emailVerified: false,
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
       });

@@ -104,4 +104,38 @@ describe('createAuthRepository (integration)', () => {
       expect(found).toBeNull();
     });
   });
+
+  describe('findOrCreateOAuthUser', () => {
+    it('creates a new, real (non-ghost) user on first OAuth login', async () => {
+      const user = await repository.findOrCreateOAuthUser('google', 'google-sub-1', 'oauth@example.com', 'Jane Doe');
+
+      expect(user.email).toBe('oauth@example.com');
+      expect(user.name).toBe('Jane Doe');
+      expect(user.provider).toBe('google');
+      expect(user.providerId).toBe('google-sub-1');
+      expect(user.emailVerified).toBe(true);
+      expect(user.isGhost).toBe(false);
+      expect(user.password).toBeNull();
+    });
+
+    it('returns the same user on a repeat login with the same provider identity', async () => {
+      const first = await repository.findOrCreateOAuthUser('google', 'google-sub-2', 'repeat@example.com', 'Jane Doe');
+
+      const second = await repository.findOrCreateOAuthUser('google', 'google-sub-2', 'repeat@example.com', 'Jane Doe');
+
+      expect(second.id).toBe(first.id);
+    });
+
+    it('links the OAuth identity onto an existing password account with the same email instead of creating a duplicate', async () => {
+      const passwordUser = await repository.create(buildRegisterDto({ email: 'linked@example.com' }));
+
+      const linked = await repository.findOrCreateOAuthUser('google', 'google-sub-3', 'linked@example.com', 'Jane Doe');
+
+      expect(linked.id).toBe(passwordUser.id);
+      expect(linked.provider).toBe('google');
+      expect(linked.providerId).toBe('google-sub-3');
+      expect(linked.emailVerified).toBe(true);
+      expect(linked.password).toBe('already-hashed-value'); // niedotknięte przez dowiązanie
+    });
+  });
 });

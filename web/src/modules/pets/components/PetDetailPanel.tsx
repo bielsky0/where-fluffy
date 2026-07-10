@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import type { Coordinate } from '@/shared/components/map/types';
 import { cn } from '@/shared/lib/cn';
-import { distanceMeters, formatDistance, formatRelativeTime } from '../lib/format';
+import { distanceMeters, formatDistance, formatRelativeTime, getPetDisplayInitial, getPetDisplayName } from '../lib/format';
 import type { Pet } from '../types/pet.types';
 
 interface PetDetailPanelProps {
@@ -24,7 +24,7 @@ function HeroMonogram({ pet }: { pet: Pet }) {
       className="flex size-full items-center justify-center bg-neutral-100 text-7xl font-bold text-neutral-300"
       aria-hidden="true"
     >
-      {pet.name.charAt(0).toUpperCase()}
+      {getPetDisplayInitial(pet)}
     </div>
   );
 }
@@ -168,7 +168,7 @@ export function PetDetailPanel({ pet, origin, onClose }: PetDetailPanelProps) {
       <div className="flex flex-col gap-1 bg-white px-4 pb-4 pt-3">
         <div className="flex items-baseline justify-between gap-2">
           <p className="truncate text-[17px] font-bold text-[#222222]">
-            {pet.name} • {pet.species}
+            {getPetDisplayName(pet)} • {pet.species}
           </p>
           <span className="shrink-0 text-[13px] font-semibold text-[#222222]">⭐ {distance} stąd</span>
         </div>

@@ -71,7 +71,7 @@ export function useLogout() {
 }
 
 // POST /auth/otp/request (src/modules/auth/auth.routes.ts) — Ghost Account flow, step 1. No
-// session is established here; `identifier` (e-mail or phone) just gets a one-time code.
+// session is established here; `email` just gets a one-time code (no SMS, ever).
 export function useRequestOtp() {
   return useMutation({
     mutationFn: (payload: RequestOtpPayload) =>

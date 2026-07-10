@@ -14,7 +14,8 @@ export const errorHandler = (err: unknown, req: Request, res: Response, _next: N
 
   if (isAppError(normalized) && normalized.isOperational) {
     const details = isValidationAppError(normalized) ? { errors: normalized.details } : {};
-    res.status(normalized.statusCode).json({ status: 'error', message: normalized.message, ...details });
+    const code = normalized.code ? { code: normalized.code } : {};
+    res.status(normalized.statusCode).json({ status: 'error', message: normalized.message, ...code, ...details });
     return;
   }
 

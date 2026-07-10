@@ -56,6 +56,22 @@ services:
       FALLBACK_LOCATION_LNG: "21.0122"
       FALLBACK_LOCATION_CITY: "Warszawa"
       GEOIP_DB_PATH: "./geoip/GeoLite2-City.mmdb"
+      # OAuth (Google/Facebook) — placeholders; replace with real registered app credentials
+      # before this container needs to serve a real login flow. See src/.env.example and
+      # shared/config/oauth.config.ts for what each does, including the per-provider kill switch.
+      FRONTEND_URL: "http://localhost:5173"
+      BACKEND_PUBLIC_URL: "http://localhost:3000"
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      GOOGLE_OAUTH_ENABLED: "true"
+      FACEBOOK_APP_ID: ""
+      FACEBOOK_APP_SECRET: ""
+      FACEBOOK_OAUTH_ENABLED: "true"
+      # NODE_ENV above is "production", so requestOtp (auth.service.ts) will attempt a real send
+      # via this key rather than logging/echoing devCode — leave RESEND_API_KEY empty here unless
+      # you actually want this container emailing real OTP codes.
+      RESEND_API_KEY: ""
+      EMAIL_FROM_ADDRESS: "Where's Fluffy <onboarding@resend.dev>"
     ports:
       - "3000:3000" # alternative to running `npm run dev` on the host — don't run both at once,
                      # they'd fight over this same host port.

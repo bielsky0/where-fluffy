@@ -10,6 +10,7 @@ const buildPetResponse = (overrides: Partial<PetResponseDTO> = {}): PetResponseD
   status: 'missing',
   reward: 0,
   phone: null,
+  email: null,
   distinguishingMarks: null,
   photoUrl: null,
   photoUrls: [],

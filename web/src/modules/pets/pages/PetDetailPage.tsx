@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppUIStore } from '@/modules/app/store/useAppUIStore';
+import { readFreshIntent, usePendingIntentStore } from '@/modules/auth/store/usePendingIntentStore';
 import { usePetMapStore } from '../store/usePetMapStore';
 import { useAppLocation } from '@/modules/location/api/useAppLocation';
 import { usePet } from '../api/usePet';
 import { useSightings } from '../api/useSightings';
-import { distanceMeters, formatDistance, formatRelativeTime } from '../lib/format';
+import { distanceMeters, formatDistance, formatRelativeTime, getPetDisplayName } from '../lib/format';
 import { HeroGallery } from '../components/pet-detail/HeroGallery';
 import { PhotoLightbox } from '../components/pet-detail/PhotoLightbox';
 import { LocationMapWidget } from '../components/pet-detail/LocationMapWidget';
@@ -43,7 +44,7 @@ function buildPetDescription(pet: Pet): string {
   const cityPhrase = pet.city ? ` w ${pet.city}` : '';
   const rewardPhrase =
     pet.reward > 0 ? ` Za pomoc w odnalezieniu przewidziana jest nagroda w wysokości ${pet.reward} zł.` : '';
-  return `${pet.name} to ${pet.species}, który ${statusPhrase}${cityPhrase} ${formatRelativeTime(pet.createdAt)}.${rewardPhrase} Każda wskazówka pomaga — jeśli rozpoznajesz to zwierzę, zostaw zgłoszenie widzenia poniżej.`;
+  return `${getPetDisplayName(pet)} to ${pet.species}, który ${statusPhrase}${cityPhrase} ${formatRelativeTime(pet.createdAt)}.${rewardPhrase} Każda wskazówka pomaga — jeśli rozpoznajesz to zwierzę, zostaw zgłoszenie widzenia poniżej.`;
 }
 
 interface StatColumnProps {
@@ -68,6 +69,21 @@ export default function PetDetailPage() {
   const [isReportSheetOpen, setIsReportSheetOpen] = useState(false);
   const [isStoryMode, setIsStoryMode] = useState(false);
 
+  // Resume-on-landing: a guest who tapped "Zgłoś zaobserwowanie" here, then completed a
+  // full-page OAuth redirect, lands back on this same pet with no in-memory state left — the
+  // sheet needs to reopen itself rather than the guest having to find the button again. See
+  // StickyActionBar.tsx, which sets this intent before the redirect.
+  const hasCheckedResumeIntent = useRef(false);
+  useEffect(() => {
+    if (hasCheckedResumeIntent.current || !pet) return;
+    hasCheckedResumeIntent.current = true;
+    const intent = readFreshIntent();
+    if (intent?.kind === 'report-sighting' && intent.petId === pet.id) {
+      setIsReportSheetOpen(true);
+      usePendingIntentStore.getState().clearIntent();
+    }
+  }, [pet]);
+
   const handleBack = () => navigate(-1);
 
   const handleOpenMap = () => {
@@ -79,7 +95,7 @@ export default function PetDetailPage() {
   const handleShare = async () => {
     if (!pet) return;
     const url = `${window.location.origin}/app/pets/${pet.id}`;
-    const title = `${STATUS_COPY[pet.status].verb}: ${pet.name}`;
+    const title = `${STATUS_COPY[pet.status].verb}: ${getPetDisplayName(pet)}`;
     if (navigator.share) {
       try {
         await navigator.share({ title, text: `${title} — pomóż w poszukiwaniach!`, url });
@@ -132,7 +148,7 @@ export default function PetDetailPage() {
         {/* Metadata block */}
         <div className="px-5 pb-5 pt-5" style={{ backgroundColor: '#FFFFFF' }}>
           <h1 className="text-2xl font-bold leading-tight" style={{ color: ANTHRACITE }}>
-            {status.verb}: {pet.name}
+            {status.verb}: {getPetDisplayName(pet)}
           </h1>
           <p className="mt-1 text-sm font-medium" style={{ color: MUTED_GRAY }}>
             {pet.species} • {pet.city ?? 'Nieznana okolica'}
@@ -212,7 +228,7 @@ export default function PetDetailPage() {
         <PhotoLightbox
           photos={pet.photoUrls}
           startIndex={lightboxIndex}
-          altText={pet.name}
+          altText={getPetDisplayName(pet)}
           onClose={() => setLightboxIndex(null)}
         />
       )}

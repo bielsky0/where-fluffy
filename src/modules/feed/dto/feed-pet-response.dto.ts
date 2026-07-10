@@ -5,7 +5,9 @@ import type { PetCategory } from '../../pets/pets.category.js';
 // (pets.mapper.spec.ts asserts PetResponseDTO never leaks those fields).
 export interface FeedPetResponseDTO {
   id: string;
-  name: string;
+  // Opcjonalne: Znalazca może nie znać imienia zwierzaka (Kreator V2) — patrz Pet.name w
+  // schema.prisma.
+  name: string | null;
   species: string;
   category: PetCategory;
   status: 'missing' | 'found';

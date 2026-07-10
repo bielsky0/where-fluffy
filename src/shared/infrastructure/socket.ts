@@ -9,9 +9,9 @@ import type { RedisClientType } from 'redis';
 // przenieść w bardziej neutralne miejsce i połączyć jako unia zdarzeń z obu modułów.
 import type { ChatIoServer } from '../../modules/chat/interface/chat.interface.js';
 import { createSocketConnectionRateLimiter } from '../rate-limit/rate-limiter.socket.js';
+import { JWT_SECRET } from '../config/auth.config.js';
 
 let io: ChatIoServer;
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 
 // Przyjmujemy pub/sub jako argumenty! `redisClient` (ogólnego przeznaczenia, NIE pub/sub) trafia
 // tu osobno wyłącznie dla rate-limitera połączeń — patrz rate-limiter.socket.ts i CLAUDE.md

@@ -1,7 +1,8 @@
 // Mirrors src/modules/auth/dto/*.dto.ts and interface/user.interface.ts (password field
 // excluded — the backend never sends it back). Duplicated here for the same shared-types/
-// placeholder reason as pets/chat.types.ts. `email` is nullable — a Ghost Account created via
-// phone-only OTP verification (see useRequestOtp/useVerifyOtp) has none.
+// placeholder reason as pets/chat.types.ts. `email` stays nullable for type-level backward
+// compatibility with any pre-existing phone-only Ghost Account rows — new accounts (password,
+// OTP, or OAuth) always have one now, phone-based login has been removed (see auth.schema.ts).
 export interface User {
   id: string;
   email: string | null;
@@ -23,21 +24,20 @@ export interface LoginResponse {
   user: User;
 }
 
-// Ghost Account flow — `identifier` is whatever the user typed (e-mail or phone), the backend
-// tells the two apart by shape (see auth.repository.ts's findOrCreateGhostUser).
+// Ghost Account flow — e-mail only now (no SMS, ever — see the spec this shipped against).
 export interface RequestOtpPayload {
-  identifier: string;
+  email: string;
 }
 
 export interface RequestOtpResponse {
   message: string;
   // Only present outside production (see auth.service.ts's requestOtp dev-stub) — lets
   // AuthBottomSheet pre-fill/display the code so the whole flow is testable without a real
-  // email/SMS provider.
+  // email provider.
   devCode?: string;
 }
 
 export interface VerifyOtpPayload {
-  identifier: string;
+  email: string;
   code: string;
 }

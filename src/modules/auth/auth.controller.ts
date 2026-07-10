@@ -4,12 +4,7 @@ import { AuthService } from './auth.service.js';
 import { LoginDTO } from './dto/login.dto.js';
 import { RegisterDTO } from './dto/register.dto.js';
 import { RequestOtpDTO, VerifyOtpDTO } from './dto/otp.dto.js';
-
-const TOKEN_COOKIE_OPTIONS = {
-  httpOnly: true, // Blokuje dostęp z poziomu JS (ochrona XSS)
-  secure: process.env.NODE_ENV === 'production', // Wymaga HTTPS na produkcji
-  sameSite: 'lax' as const, // Ochrona przed CSRF
-};
+import { TOKEN_COOKIE_OPTIONS, setAuthCookie } from './auth.cookie.js';
 
 export type AuthController = {
   registerUser: (req: Request, res: Response) => Promise<void>;
@@ -32,8 +27,7 @@ export const createAuthController = (authService: AuthService): AuthController =
   const loginUser = async (req: Request, res: Response): Promise<void> => {
     const { user, token } = await authService.login(req.body as LoginDTO);
 
-    // Ustawiamy ciasteczko z tokenem
-    res.cookie('token', token, { ...TOKEN_COOKIE_OPTIONS, maxAge: 24 * 60 * 60 * 1000 });
+    setAuthCookie(res, token);
 
     // Zwracamy sam obiekt użytkownika, token ukrywa się w nagłówku Set-Cookie
     res.status(200).json({ user });
@@ -52,8 +46,8 @@ export const createAuthController = (authService: AuthService): AuthController =
 
   // req.body jest już zwalidowany przez middleware validate(requestOtpSchema) w auth.routes.ts.
   const requestOtp = async (req: Request, res: Response): Promise<void> => {
-    const { identifier } = req.body as RequestOtpDTO;
-    const result = await authService.requestOtp(identifier);
+    const { email } = req.body as RequestOtpDTO;
+    const result = await authService.requestOtp(email);
     res.status(200).json(result);
   };
 
@@ -61,10 +55,10 @@ export const createAuthController = (authService: AuthService): AuthController =
   // Ustawia to samo ciasteczko `token` co loginUser — Ghost Account flow kończy się dokładnie
   // taką samą sesją jak logowanie hasłem.
   const verifyOtp = async (req: Request, res: Response): Promise<void> => {
-    const { identifier, code } = req.body as VerifyOtpDTO;
-    const { user, token } = await authService.verifyOtp(identifier, code);
+    const { email, code } = req.body as VerifyOtpDTO;
+    const { user, token } = await authService.verifyOtp(email, code);
 
-    res.cookie('token', token, { ...TOKEN_COOKIE_OPTIONS, maxAge: 24 * 60 * 60 * 1000 });
+    setAuthCookie(res, token);
     res.status(200).json({ user });
   };
 

@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import {parseCookie} from 'cookie';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
+import { JWT_SECRET } from '../config/auth.config.js';
 
 // Rozszerzamy standardowy interfejs Request z Expressa o dane zalogowanego użytkownika
 export interface AuthenticatedRequest extends Request {

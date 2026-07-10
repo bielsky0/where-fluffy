@@ -5,6 +5,7 @@ import type { AddListingWizardData } from '../../store/useAddListingWizardStore'
 
 interface StepForkProps {
   control: Control<AddListingWizardData>;
+  onAutoAdvance: (reportType: 'lost' | 'found') => void;
 }
 
 interface ForkTileProps {
@@ -56,7 +57,10 @@ function ForkTile({ emoji, label, description, selected, disabled, disabledHint,
 // Step 1 — the wizard's fork. Both tiles submit to the same POST /pets endpoint, just with a
 // different `status` ('missing' vs 'found', see CreatePetReportPayload) — later steps swap their
 // copy based on this choice (e.g. StepMapPin's "miejsce zaginięcia" vs "miejsce znalezienia").
-export function StepFork({ control }: StepForkProps) {
+// Single-choice, auto-advance (V2 spec): tapping a tile both records the choice AND immediately
+// moves to step 2 via `onAutoAdvance` — there's no "Dalej" button on this step at all (see
+// AddListingWizard.tsx, which hides its footer entirely for step 1).
+export function StepFork({ control, onAutoAdvance }: StepForkProps) {
   return (
     <Controller
       name="reportType"
@@ -75,14 +79,20 @@ export function StepFork({ control }: StepForkProps) {
               label="Zgubiłem zwierzaka"
               description="Zgłoś zaginięcie i poproś okolicznych mieszkańców o pomoc w poszukiwaniach."
               selected={field.value === 'lost'}
-              onSelect={() => field.onChange('lost')}
+              onSelect={() => {
+                field.onChange('lost');
+                onAutoAdvance('lost');
+              }}
             />
             <ForkTile
               emoji="🐾"
               label="Znalazłem zwierzaka"
               description="Zgłoś znalezisko i pomóż połączyć zwierzaka z jego właścicielem."
               selected={field.value === 'found'}
-              onSelect={() => field.onChange('found')}
+              onSelect={() => {
+                field.onChange('found');
+                onAutoAdvance('found');
+              }}
             />
           </div>
         </div>

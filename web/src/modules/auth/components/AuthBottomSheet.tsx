@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { toast } from 'sonner';
+import { API_BASE_URL } from '@/lib/apiClient';
 import { useAuthStore } from '../store/useAuthStore';
-import { useLogin, useRegister, useRequestOtp, useVerifyOtp } from '../api/useAuth';
+import { usePendingIntentStore } from '../store/usePendingIntentStore';
+import { useLogin } from '../api/useAuth';
+import { useOtpEntry } from '../hooks/useOtpEntry';
 
-type EmailMode = 'login' | 'register';
-// 'identifier': e-mail lub telefon, wysyła kod (Ghost Account flow, krok 1).
+// 'identifier': e-mail, wysyła kod (Ghost Account flow, krok 1).
 // 'otp': wpisanie 6-cyfrowego kodu (krok 2) — sukces loguje dokładnie jak hasło.
-// 'password': istniejąca ścieżka e-mail/hasło, wciąż dostępna dla już zarejestrowanych kont.
+// 'password': istniejąca ścieżka e-mail/hasło, login-only teraz — spec zabrania zakładania
+// nowych kont hasłowych, więc rejestracja hasłem zniknęła z UI (endpoint /auth/register wciąż
+// działa dla API/testów, po prostu nic w tym komponencie już go nie wywołuje).
 type Stage = 'identifier' | 'otp' | 'password';
 
 // A phone number is dragged down past this (px) or flicked past this velocity (px/s) ⇒ treat
@@ -16,6 +20,16 @@ type Stage = 'identifier' | 'otp' | 'password';
 // sheet only has one resting position, not three snap points.
 const DISMISS_OFFSET = 120;
 const DISMISS_VELOCITY = 600;
+
+// Heuristic only (not full phone validation) — just enough to tell "looks like a phone number"
+// from "looks like an email", so a user who reflexively types their old phone number (SMS login
+// no longer exists, see the spec this shipped against) gets a specific, actionable message
+// instead of a generic "invalid email" error.
+const PHONE_LIKE_PATTERN = /^[+\d][\d\s\-()]{5,}$/;
+
+function startOAuthRedirect(provider: 'google' | 'facebook') {
+  window.location.href = `${API_BASE_URL}/auth/${provider}`;
+}
 
 function PawLogo() {
   return (
@@ -42,54 +56,78 @@ function GoogleIcon() {
   );
 }
 
-function AppleIcon() {
+// Standard Facebook "f" mark — same inline-SVG treatment as GoogleIcon above.
+function FacebookIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="size-6 text-black" aria-hidden="true">
-      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+    <svg viewBox="0 0 24 24" className="size-6" aria-hidden="true">
+      <path
+        fill="#1877F2"
+        d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
+      />
     </svg>
   );
 }
 
-function handleSocialPlaceholder(provider: 'Google' | 'Apple') {
-  toast(`Logowanie przez ${provider} pojawi się wkrótce`);
-}
-
 // Premium replacement for the old AuthModal.tsx, triggered the same way (GuestTabBar.tsx's
-// "Dodaj"/"Zaloguj się", or BottomNav.tsx's gated tabs, both via useProtectedAction) and sharing
-// the same open/close/pendingAction contract from useAuthStore — only the visual and gesture
-// layer changed. Mounted once at the true root (App.tsx), not scoped to AppShell, so it's
-// available on every route (spec: "always available" Auth Overlay).
+// "Dodaj"/"Zaloguj się", BottomNav.tsx's gated tabs, or AddListingWizard's guest-checkout step,
+// all via useProtectedAction) and sharing the same open/close/pendingAction contract from
+// useAuthStore — this is now the ONE auth UI everywhere in the app, not one of several. Mounted
+// once at the true root (App.tsx), not scoped to AppShell, so it's available on every route
+// (spec: "always available" Auth Overlay).
 //
-// Ghost Account flow: the front-and-center "e-mail lub telefon" field now actually authenticates
-// — it requests a one-time code (POST /auth/otp/request) and, once verified (POST
-// /auth/otp/verify), logs in exactly like the password path (same httpOnly `token` cookie,
-// same useAuthStore/SessionBootstrap sync). The OTP code itself is dev-only right now (no real
-// email/SMS provider is wired up yet, see auth.service.ts's requestOtp) — outside production the
-// backend echoes it back and this component surfaces it via toast so the whole flow is testable
-// end-to-end. The existing password form is kept as a fallback ("Zaloguj hasłem") for accounts
-// that already have one. The Google/Apple tiles remain honest placeholders, same as before.
+// Ghost Account flow: the front-and-center "e-mail" field requests a one-time code (POST
+// /auth/otp/request) and, once verified (POST /auth/otp/verify), logs in exactly like the
+// password path (same httpOnly `token` cookie, same useAuthStore/SessionBootstrap sync). Outside
+// production the backend still echoes the code back (no real send, see auth.service.ts's
+// requestOtp) and this component surfaces it via toast for end-to-end testability. The password
+// form is kept as a login-only fallback ("Zaloguj hasłem") for pre-existing accounts — no
+// password *registration* path remains in this UI (spec: passwordless going forward).
+//
+// Google/Facebook: real Authorization Code redirects now (see startOAuthRedirect above) — a full
+// `window.location.href` navigation away, not a fetch, so this component itself never observes
+// the OAuth round trip; the backend's callback sets the session cookie and redirects back to
+// /auth/callback (OAuthCallbackPage.tsx), which is what resumes whatever the user was doing
+// (see usePendingIntentStore, written by useProtectedAction before this sheet ever opens).
 export function AuthBottomSheet() {
   const isOpen = useAuthStore((state) => state.isAuthModalOpen);
   const closeAuthModal = useAuthStore((state) => state.closeAuthModal);
   const consumePendingAction = useAuthStore((state) => state.consumePendingAction);
+  const prefillIdentifier = useAuthStore((state) => state.prefillIdentifier);
 
   const [stage, setStage] = useState<Stage>('identifier');
   const [identifier, setIdentifier] = useState('');
-  const [code, setCode] = useState('');
-  const [emailMode, setEmailMode] = useState<EmailMode>('login');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const hasAutoSentPrefill = useRef(false);
 
   const identifierInputRef = useRef<HTMLInputElement>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
-  const requestOtp = useRequestOtp();
-  const verifyOtp = useVerifyOtp();
+  // Resolved synchronously, in-page (no reload) — any resumeIntent set moments earlier by
+  // useProtectedAction is now stale and must not linger to be replayed later (see
+  // usePendingIntentStore's MAX_AGE_MS window, which this preempts).
+  const settleInPage = () => {
+    const pendingAction = consumePendingAction();
+    usePendingIntentStore.getState().clearIntent();
+    closeAuthModal();
+    pendingAction?.();
+  };
+
+  const otpEntry = useOtpEntry({
+    email: identifier.trim(),
+    onVerified: settleInPage,
+  });
   const login = useLogin();
-  const register = useRegister();
-  const isPending = login.isPending || register.isPending;
-  const isError = login.isError || register.isError;
+  const isPending = login.isPending;
+  const isError = login.isError;
+  const looksLikePhoneNumber = PHONE_LIKE_PATTERN.test(identifier.trim()) && !identifier.includes('@');
+
+  // Dev-only convenience — the backend echoes the code back outside production (no real email
+  // provider config, or explicitly running outside NODE_ENV=production, see auth.service.ts's
+  // requestOtp) so the whole flow is testable end-to-end; fires again on every resend, not just
+  // the first send.
+  useEffect(() => {
+    if (otpEntry.devCode) toast(`Tryb testowy — Twój kod: ${otpEntry.devCode}`);
+  }, [otpEntry.devCode]);
 
   // Every field resets once the sheet fully closes, so the next open (whatever triggered it)
   // starts from a clean slate rather than resuming a half-filled form from an unrelated attempt.
@@ -97,12 +135,22 @@ export function AuthBottomSheet() {
     if (isOpen) return;
     setStage('identifier');
     setIdentifier('');
-    setCode('');
-    setEmailMode('login');
-    setEmail('');
     setPassword('');
-    setName('');
+    hasAutoSentPrefill.current = false;
   }, [isOpen]);
+
+  // prefillIdentifier (set by e.g. AddListingWizard, which already collected the guest's e-mail
+  // on step 4): skip the identifier stage entirely and fire the code request immediately,
+  // mirroring the old wizard-local PublishOtpModal's "request on mount" behavior — but through
+  // this one shared component instead of a second bespoke one.
+  useEffect(() => {
+    if (!isOpen || !prefillIdentifier || hasAutoSentPrefill.current) return;
+    hasAutoSentPrefill.current = true;
+    setIdentifier(prefillIdentifier);
+    setStage('otp');
+    void otpEntry.requestCode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, prefillIdentifier]);
 
   // Mounting the sheet also mounts the relevant keyboard — focusing the active stage's input is
   // deferred one frame so it lands after the slide-up transition starts rather than racing it.
@@ -119,44 +167,36 @@ export function AuthBottomSheet() {
 
   const handleIdentifierSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!identifier.trim()) return;
+    if (!identifier.trim() || looksLikePhoneNumber) return;
 
-    const result = await requestOtp.mutateAsync({ identifier: identifier.trim() });
-    if (result.devCode) {
-      toast(`Tryb testowy — Twój kod: ${result.devCode}`);
-    }
-    setStage('otp');
+    const sent = await otpEntry.requestCode();
+    if (sent) setStage('otp');
   };
 
   const handleOtpSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    await verifyOtp.mutateAsync({ identifier: identifier.trim(), code: code.trim() });
-
-    const pendingAction = consumePendingAction();
-    closeAuthModal();
-    pendingAction?.();
+    await otpEntry.submit();
   };
 
   const handleEmailSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    await login.mutateAsync({ email: identifier, password });
+    settleInPage();
+  };
 
-    // Mirrors AuthModal.tsx's original chaining: POST /auth/register doesn't set the session
-    // cookie, so "join the community" still needs a real login call right after to establish one.
-    if (emailMode === 'register') {
-      await register.mutateAsync({ email, password, name });
-    }
-    await login.mutateAsync({ email, password });
-
-    const pendingAction = consumePendingAction();
+  // Closing without completing (backdrop tap, drag-dismiss) abandons whatever resumeIntent was
+  // set for this attempt — otherwise a stale intent could incorrectly replay against a later,
+  // unrelated login (e.g. AppShell.tsx reopening the wizard out of nowhere on a normal reload).
+  const handleDismiss = () => {
+    usePendingIntentStore.getState().clearIntent();
     closeAuthModal();
-    pendingAction?.();
   };
 
   // Flow 2: a fast/far-enough downward drag counts as an explicit dismiss; anything short of
   // that and framer's own `animate` prop springs the sheet straight back to y: 0 on release.
   const handleDragEnd = (_event: unknown, info: PanInfo) => {
     if (info.offset.y > DISMISS_OFFSET || info.velocity.y > DISMISS_VELOCITY) {
-      closeAuthModal();
+      handleDismiss();
     }
   };
 
@@ -167,7 +207,7 @@ export function AuthBottomSheet() {
           <motion.div
             key="backdrop"
             role="presentation"
-            onClick={closeAuthModal}
+            onClick={handleDismiss}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -212,16 +252,23 @@ export function AuthBottomSheet() {
                 <form onSubmit={(event) => void handleIdentifierSubmit(event)} className="mt-8 flex flex-col gap-4">
                   <input
                     ref={identifierInputRef}
-                    type="text"
+                    type="email"
                     inputMode="email"
                     autoComplete="email"
                     value={identifier}
                     onChange={(event) => setIdentifier(event.target.value)}
-                    placeholder="E-mail lub numer telefonu"
+                    placeholder="Adres e-mail"
                     className="w-full rounded-xl border border-neutral-200 px-4 py-3.5 text-base text-black placeholder:text-neutral-400 focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
                   />
 
-                  {requestOtp.isError && (
+                  {looksLikePhoneNumber && (
+                    <p className="text-sm text-neutral-500">
+                      Logowanie numerem telefonu nie jest już dostępne — użyj adresu e-mail lub zaloguj się przez
+                      Google/Facebook.
+                    </p>
+                  )}
+
+                  {otpEntry.isSendingCodeError && (
                     <p role="alert" className="text-sm text-red-600">
                       Nie udało się wysłać kodu. Spróbuj ponownie.
                     </p>
@@ -229,10 +276,10 @@ export function AuthBottomSheet() {
 
                   <button
                     type="submit"
-                    disabled={requestOtp.isPending}
+                    disabled={otpEntry.isSendingCode || looksLikePhoneNumber}
                     className="w-full rounded-full bg-rose-600 py-4 text-center text-base font-bold text-white transition-colors active:bg-rose-700 disabled:opacity-60"
                   >
-                    {requestOtp.isPending ? 'Wysyłanie…' : 'Dalej'}
+                    {otpEntry.isSendingCode ? 'Wysyłanie…' : 'Dalej'}
                   </button>
                 </form>
               )}
@@ -248,50 +295,53 @@ export function AuthBottomSheet() {
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     maxLength={6}
-                    value={code}
-                    onChange={(event) => setCode(event.target.value)}
+                    value={otpEntry.code}
+                    onChange={(event) => otpEntry.setCode(event.target.value)}
                     placeholder="000000"
                     className="w-full rounded-xl border border-neutral-200 px-4 py-3.5 text-center text-lg tracking-[0.5em] text-black placeholder:text-neutral-400 focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
                   />
 
-                  {verifyOtp.isError && (
+                  {otpEntry.errorKind && (
                     <p role="alert" className="text-sm text-red-600">
-                      Nieprawidłowy lub wygasły kod. Spróbuj ponownie.
+                      {otpEntry.errorKind === 'invalid' && 'Niepoprawny kod. Spróbuj ponownie.'}
+                      {otpEntry.errorKind === 'expired' && 'Kod wygasł. Wyślij nowy kod.'}
+                      {otpEntry.errorKind === 'network' && 'Coś poszło nie tak. Spróbuj ponownie.'}
                     </p>
                   )}
 
                   <button
                     type="submit"
-                    disabled={verifyOtp.isPending || code.trim().length !== 6}
+                    disabled={otpEntry.isVerifying || otpEntry.code.trim().length !== 6}
                     className="w-full rounded-full bg-rose-600 py-4 text-center text-base font-bold text-white transition-colors active:bg-rose-700 disabled:opacity-60"
                   >
-                    {verifyOtp.isPending ? 'Weryfikacja…' : 'Potwierdź'}
+                    {otpEntry.isVerifying ? 'Weryfikacja…' : 'Potwierdź'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void otpEntry.requestCode()}
+                    disabled={!otpEntry.canResend}
+                    className="text-center text-sm font-medium text-neutral-500 disabled:opacity-50"
+                  >
+                    {otpEntry.canResend
+                      ? 'Wyślij kod ponownie'
+                      : `Wyślij kod ponownie (${otpEntry.secondsUntilResend}s)`}
                   </button>
                   <button
                     type="button"
                     onClick={() => setStage('identifier')}
                     className="text-center text-sm font-medium text-neutral-500"
                   >
-                    Zmień e-mail lub numer telefonu
+                    Zmień adres e-mail
                   </button>
                 </form>
               )}
 
               {stage === 'password' && (
                 <form onSubmit={(event) => void handleEmailSubmit(event)} className="mt-8 flex flex-col gap-3">
-                  {emailMode === 'register' && (
-                    <input
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      placeholder="Imię"
-                      required
-                      className="w-full rounded-xl border border-neutral-200 px-4 py-3.5 text-base text-black placeholder:text-neutral-400 focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
-                    />
-                  )}
                   <input
                     type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
+                    value={identifier}
+                    onChange={(event) => setIdentifier(event.target.value)}
                     placeholder="Email"
                     required
                     autoFocus
@@ -303,7 +353,6 @@ export function AuthBottomSheet() {
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Hasło"
                     required
-                    minLength={emailMode === 'register' ? 8 : undefined}
                     className="w-full rounded-xl border border-neutral-200 px-4 py-3.5 text-base text-black placeholder:text-neutral-400 focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
                   />
 
@@ -318,14 +367,7 @@ export function AuthBottomSheet() {
                     disabled={isPending}
                     className="w-full rounded-full bg-rose-600 py-4 text-center text-base font-bold text-white transition-colors active:bg-rose-700 disabled:opacity-60"
                   >
-                    {isPending ? 'Chwileczkę…' : emailMode === 'login' ? 'Zaloguj' : 'Zarejestruj'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEmailMode(emailMode === 'login' ? 'register' : 'login')}
-                    className="text-center text-sm font-medium text-neutral-500"
-                  >
-                    {emailMode === 'login' ? 'Nie masz konta? Zarejestruj się' : 'Masz już konto? Zaloguj się'}
+                    {isPending ? 'Chwileczkę…' : 'Zaloguj'}
                   </button>
                   <button
                     type="button"
@@ -346,7 +388,7 @@ export function AuthBottomSheet() {
               <div className="flex justify-center gap-4">
                 <button
                   type="button"
-                  onClick={() => handleSocialPlaceholder('Google')}
+                  onClick={() => startOAuthRedirect('google')}
                   aria-label="Kontynuuj z Google"
                   className="flex size-14 items-center justify-center rounded-xl border border-neutral-200 bg-white transition-colors active:bg-neutral-50"
                 >
@@ -354,11 +396,11 @@ export function AuthBottomSheet() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSocialPlaceholder('Apple')}
-                  aria-label="Kontynuuj z Apple"
+                  onClick={() => startOAuthRedirect('facebook')}
+                  aria-label="Kontynuuj z Facebook"
                   className="flex size-14 items-center justify-center rounded-xl border border-neutral-200 bg-white transition-colors active:bg-neutral-50"
                 >
-                  <AppleIcon />
+                  <FacebookIcon />
                 </button>
               </div>
 

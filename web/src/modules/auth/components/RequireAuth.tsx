@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
+import { usePendingIntentStore } from '../store/usePendingIntentStore';
 
 interface RequireAuthProps {
   children: ReactNode;
@@ -13,6 +15,8 @@ export function RequireAuth({ children }: RequireAuthProps) {
   const currentUser = useAuthStore((state) => state.currentUser);
   const isLoading = useAuthStore((state) => state.isLoading);
   const openAuthModal = useAuthStore((state) => state.openAuthModal);
+  const setIntent = usePendingIntentStore((state) => state.setIntent);
+  const location = useLocation();
 
   // Guards against re-opening the sheet on every render once it's already been requested for
   // this mount — openAuthModal itself is idempotent-ish (just sets state) but there's no reason
@@ -22,8 +26,12 @@ export function RequireAuth({ children }: RequireAuthProps) {
   useEffect(() => {
     if (isLoading || currentUser || hasRequestedAuth.current) return;
     hasRequestedAuth.current = true;
+    // Not a useProtectedAction call site (there's no click-triggered `action` here, just landing
+    // on a gated URL), but the same OAuth-redirect problem applies: a full-page redirect drops
+    // this component's in-memory state entirely, so the return path has to be persisted too.
+    setIntent({ kind: 'app-navigate', returnPath: location.pathname });
     openAuthModal();
-  }, [isLoading, currentUser, openAuthModal]);
+  }, [isLoading, currentUser, openAuthModal, setIntent, location.pathname]);
 
   if (isLoading) return null;
 

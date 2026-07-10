@@ -1,6 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '@/lib/apiClient';
 import { useLogin } from '../api/useAuth';
+
+function startOAuthRedirect(provider: 'google' | 'facebook') {
+  window.location.href = `${API_BASE_URL}/auth/${provider}`;
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -38,11 +43,15 @@ export default function LoginPage() {
         </button>
       </form>
 
-      {/* Structural placeholder for this module's SSO responsibility — not a working
-         integration. auth.routes.ts only exposes /register, /login, /logout today; there's
-         no OAuth provider on the backend to call yet. Wire this up once one exists. */}
-      <button type="button" disabled title="SSO is not available yet">
+      {/* Real Authorization Code redirects (see AuthBottomSheet.tsx's startOAuthRedirect, same
+         pattern) — a full window.location.href navigation, not a fetch. No resumeIntent needed
+         here: this is a standalone route with no prior in-page action to resume, so the
+         backend's default /auth/callback -> /app landing is already correct. */}
+      <button type="button" onClick={() => startOAuthRedirect('google')}>
         Continue with Google
+      </button>
+      <button type="button" onClick={() => startOAuthRedirect('facebook')}>
+        Continue with Facebook
       </button>
     </main>
   );

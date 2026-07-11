@@ -17,6 +17,7 @@ import { StickyActionBar } from '../components/pet-detail/StickyActionBar';
 import { ReportSightingSheet } from '../components/pet-detail/ReportSightingSheet';
 import { StoryModeOverlay } from '../components/pet-detail/StoryModeOverlay';
 import { SightingTimeline } from '../components/pet-detail/SightingTimeline';
+import { SimilarPetsCarousel } from '../components/pet-detail/SimilarPetsCarousel';
 import { UserAvatarIcon, ClockIcon, StarIcon } from '../components/pet-detail/icons';
 import type { Pet, PetStatus } from '../types/pet.types';
 
@@ -227,6 +228,8 @@ export default function PetDetailPage() {
             {buildPetDescription(pet)}
           </p>
         </div>
+
+        <SimilarPetsCarousel pet={pet} />
 
         <SightingTimeline petId={pet.id} sightings={sightings} accentColor={status.accent} />
       </div>

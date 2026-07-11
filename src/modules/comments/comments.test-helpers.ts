@@ -19,6 +19,7 @@ export const buildMockPetRepository = (): jest.Mocked<PetRepository> => ({
   update: jest.fn(),
   updateStatus: jest.fn(),
   deleteById: jest.fn(),
+  findSimilar: jest.fn(),
 });
 
 export const buildPet = (overrides: Partial<IPet> = {}): IPet => ({

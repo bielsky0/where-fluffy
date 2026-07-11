@@ -1,9 +1,11 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js';
+import { ValidatedQueryRequest } from '../../shared/middleware/validate-query.js';
 import { CreatePetDTO } from './dto/create-pet.dto.js';
 import { UpdatePetDTO } from './dto/update-pet.dto.js';
 import { IPet } from './interfaces/pets.interface.js';
 import { PetsService } from './pets.service.js';
+import { SimilarPetsQuery } from './similar-pets.schema.js';
 
 export type PetsController = {
   create: (req: AuthenticatedRequest, res: Response) => Promise<void>;
@@ -13,6 +15,7 @@ export type PetsController = {
   update: (req: AuthenticatedRequest, res: Response) => Promise<void>;
   updateStatus: (req: AuthenticatedRequest, res: Response) => Promise<void>;
   remove: (req: AuthenticatedRequest, res: Response) => Promise<void>;
+  getSimilar: (req: AuthenticatedRequest, res: Response) => Promise<void>;
 };
 
 const extractPetId = (req: AuthenticatedRequest): string => {
@@ -83,5 +86,15 @@ export const createPetsController = (petsService: PetsService): PetsController =
     res.status(204).send();
   };
 
-  return { create, listNearby, getById, listMine, update, updateStatus, remove };
+  // Publiczna trasa. req.query jest już zwalidowane przez validateQuery(similarPetsQuerySchema)
+  // w pets.routes.ts (patrz validate-query.ts's komentarz o tym, czemu to validatedQuery, nie
+  // podmienione req.query).
+  const getSimilar = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const petId = extractPetId(req);
+    const { radius } = (req as ValidatedQueryRequest<SimilarPetsQuery>).validatedQuery;
+    const result = await petsService.getSimilarPets(petId, radius);
+    res.status(200).json(result);
+  };
+
+  return { create, listNearby, getById, listMine, update, updateStatus, remove, getSimilar };
 };

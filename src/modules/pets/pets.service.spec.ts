@@ -53,6 +53,7 @@ describe('createPetsService', () => {
       update: jest.fn(),
       updateStatus: jest.fn(),
       deleteById: jest.fn(),
+      findSimilar: jest.fn(),
     };
     mockPhotoService = {
       store: jest.fn(),
@@ -411,6 +412,63 @@ describe('createPetsService', () => {
         expect(result.status).toBe(status);
       },
     );
+  });
+
+  describe('getSimilarPets', () => {
+    it('passes petId and a default radius/limit through to repository.findSimilar and maps the results', async () => {
+      const candidate = buildPet({ id: 'pet-2' });
+      mockRepository.findSimilar.mockResolvedValue([{ ...candidate, distanceMeters: 1234.5 }]);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      const result = await service.getSimilarPets('pet-1');
+
+      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 15_000, 4);
+      expect(result).toEqual([
+        {
+          id: 'pet-2',
+          name: candidate.name,
+          species: candidate.species,
+          category: candidate.category,
+          status: candidate.status,
+          ownerId: candidate.ownerId,
+          reward: candidate.reward,
+          phone: candidate.phone,
+          email: candidate.email,
+          distinguishingMarks: candidate.distinguishingMarks,
+          photoUrl: candidate.photoUrl,
+          photoUrls: candidate.photoUrls,
+          city: candidate.city,
+          location: candidate.location,
+          createdAt: candidate.createdAt.toISOString(),
+          distanceMeters: 1234.5,
+        },
+      ]);
+    });
+
+    it('passes a client-supplied radius through instead of the default', async () => {
+      mockRepository.findSimilar.mockResolvedValue([]);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await service.getSimilarPets('pet-1', 5000);
+
+      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 5000, 4);
+    });
+
+    it('returns an empty array, not an error, when the repository finds nothing', async () => {
+      mockRepository.findSimilar.mockResolvedValue([]);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      const result = await service.getSimilarPets('pet-1');
+
+      expect(result).toEqual([]);
+    });
+
+    it('propagates a rejection from repository.findSimilar without swallowing it', async () => {
+      mockRepository.findSimilar.mockRejectedValue(new Error('DB failure'));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await expect(service.getSimilarPets('pet-1')).rejects.toThrow('DB failure');
+    });
   });
 
   describe('deletePet', () => {

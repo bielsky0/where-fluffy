@@ -33,6 +33,7 @@ describe('createSeoService', () => {
       updatePet: jest.fn(),
       updatePetStatus: jest.fn(),
       deletePet: jest.fn(),
+      getSimilarPets: jest.fn(),
     };
   });
 

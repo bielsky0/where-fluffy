@@ -8,6 +8,7 @@ import { feedController } from '../feed/index.js';
 import { urgentFeedQuerySchema, feedQuerySchema } from '../feed/feed.schema.js';
 import { petsController } from './index.js';
 import { createPetSchema, updatePetSchema, updatePetStatusSchema } from './pets.schema.js';
+import { similarPetsQuerySchema } from './similar-pets.schema.js';
 import { createCommentSchema } from '../comments/comments.schema.js';
 
 const router = Router();
@@ -45,5 +46,10 @@ router.get('/:petId/comments', asyncHandler(commentsController.listForPet));
 
 // PRYWATNE: Tylko zalogowany może dodać nowy punkt widzenia / komentarz
 router.post('/:petId/comments', authenticate, validate(createCommentSchema), asyncHandler(commentsController.create));
+
+// PUBLICZNE: "Podobne zwierzęta w okolicy" (PetDetailPage.tsx). Bardziej specyficzna
+// dwusegmentowa ścieżka niż catch-all /:petId powyżej — Express dopasuje ją poprawnie niezależnie
+// od kolejności rejestracji względem GET /:petId (nie koliduje z PATCH/DELETE /:petId).
+router.get('/:petId/similar', validateQuery(similarPetsQuerySchema), asyncHandler(petsController.getSimilar));
 
 export default router;

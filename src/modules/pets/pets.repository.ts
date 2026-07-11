@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { CreatePetRecordDTO } from './dto/create-pet.dto.js';
 import { IPet, PetRepository, PetUpdatePatch } from './interfaces/pets.interface.js';
-import { mapToDomain, RawPetRow } from './pets.mapper.js';
+import { mapToDomain, mapToSimilarDomain, RawPetRow, RawSimilarPetRow } from './pets.mapper.js';
 
 // Ta sama jawna lista kolumn co findById/save/findNearLocation — nigdy SELECT */RETURNING * na
 // tabeli z kolumną geography (patrz CLAUDE.md's PostGIS gotcha #1).
@@ -138,6 +138,39 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     return pet ? mapToDomain(pet) : null;
   };
 
+  // "Podobne zwierzęta w okolicy": CTE `source` czyta location+embedding zwierzaka o id=petId, a
+  // główne zapytanie łączy podobieństwo kosinusowe (embedding <=> source.embedding, wykorzystuje
+  // istniejący indeks HNSW Pet_embedding_idx) z filtrem geograficznym (ST_DWithin, wykorzystuje
+  // istniejący indeks GiST na location) wokół tego samego punktu źródłowego. CROSS JOIN source
+  // sprawia, że każdy przypadek brzegowy zwraca po prostu 0 wierszy zamiast wymagać osobnej
+  // gałęzi w JS: petId nie istnieje -> source ma 0 wierszy -> CROSS JOIN daje 0; source.embedding
+  // lub source.location jest NULL (zwierzak jeszcze nieprzetworzony przez ai-worker albo,
+  // teoretycznie, bez lokalizacji) -> odfiltrowane explicit warunkami; brak kandydatów w
+  // promieniu/statusie -> naturalne 0 wierszy.
+  const findSimilar: PetRepository['findSimilar'] = async (petId, radiusInMeters, limit) => {
+    const rows = await prisma.$queryRaw<RawSimilarPetRow[]>`
+      WITH source AS (
+        SELECT location, embedding FROM "Pet" WHERE id = ${petId}
+      )
+      SELECT p.id, p.name, p.species, p.status, p.category, p.reward, p.phone, p.email,
+             p."distinguishingMarks", p."photoUrl", p."photoUrls", p.city, p."ownerId",
+             p."createdAt", p."updatedAt",
+             ST_Y(p.location::geometry) as lat, ST_X(p.location::geometry) as lng,
+             ST_Distance(p.location, source.location) as "distanceMeters"
+      FROM "Pet" p
+      CROSS JOIN source
+      WHERE p.id != ${petId}
+        AND p.status = 'missing'
+        AND p.embedding IS NOT NULL
+        AND source.embedding IS NOT NULL
+        AND source.location IS NOT NULL
+        AND ST_DWithin(p.location, source.location, ${radiusInMeters})
+      ORDER BY p.embedding <=> source.embedding
+      LIMIT ${limit};
+    `;
+    return rows.map(mapToSimilarDomain);
+  };
+
   // Comment/ChatRoom mają onDelete: Cascade na relacji do Pet (schema.prisma) — kasując wiersz
   // Pet, baza sama usuwa powiązane komentarze/pokoje czatu/wiadomości. `embedding` to kolumna na
   // tym samym wierszu, więc znika razem z nim — bez osobnego czyszczenia wektorów.
@@ -146,5 +179,15 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     return affected > 0 ? 'deleted' : 'not_found';
   };
 
-  return { findById, save, findNearLocation, updateEmbedding, findByOwnerId, update, updateStatus, deleteById };
+  return {
+    findById,
+    save,
+    findNearLocation,
+    updateEmbedding,
+    findByOwnerId,
+    update,
+    updateStatus,
+    deleteById,
+    findSimilar,
+  };
 };

@@ -1,8 +1,9 @@
 import { CreatePetDTO } from './dto/create-pet.dto.js';
 import { PetResponseDTO } from './dto/pet-response.dto.js';
+import { SimilarPetResponseDTO } from './dto/similar-pet-response.dto.js';
 import { UpdatePetDTO } from './dto/update-pet.dto.js';
 import { IPet, PetRepository } from './interfaces/pets.interface.js';
-import { mapToResponseDTO } from './pets.mapper.js';
+import { mapToResponseDTO, mapToSimilarResponseDTO } from './pets.mapper.js';
 import { categorizePetSpecies } from './pets.category.js';
 import { PhotoService } from '../../shared/photo/photo.service.js';
 import { GeocodingService } from '../../shared/geocoding/interfaces/geocoding.interface.js';
@@ -18,7 +19,13 @@ export type PetsService = {
   updatePet: (petId: string, requesterId: string, dto: UpdatePetDTO) => Promise<PetResponseDTO>;
   updatePetStatus: (petId: string, requesterId: string, status: IPet['status']) => Promise<PetResponseDTO>;
   deletePet: (petId: string, requesterId: string) => Promise<void>;
+  getSimilarPets: (petId: string, radius?: number) => Promise<SimilarPetResponseDTO[]>;
 };
+
+// "Wyświetlamy tylko 4" — nie jest konfigurowalne przez klienta.
+const SIMILAR_PETS_LIMIT = 4;
+// Środek zakresu 10-20km ze specyfikacji.
+const DEFAULT_SIMILAR_RADIUS_M = 15_000;
 
 // Pola, które faktycznie wpływają na tekst embeddingu (patrz ai-worker/embed-pet-data.processor.ts
 // — konkatenuje name/species/category/distinguishingMarks). `category` podąża za `species`, więc
@@ -145,6 +152,17 @@ export const createPetsService = (
     await petRepository.deleteById(petId);
   };
 
+  // "Podobne zwierzęta w okolicy": brak throw dla jakiegokolwiek przypadku "brak wyników"
+  // (nieistniejący petId, zwierzak jeszcze bez embeddingu, zero trafień w promieniu) — repository
+  // już gwarantuje [] dla każdego z nich (patrz pets.repository.ts's findSimilar), więc sekcja na
+  // froncie po prostu się nie renderuje, bez specjalnej obsługi błędu. Prawdziwa awaria bazy
+  // propaguje się jako 500 przez asyncHandler/error.middleware.ts — to jedyny "błąd" ten endpoint
+  // kiedykolwiek zwraca.
+  const getSimilarPets = async (petId: string, radius?: number): Promise<SimilarPetResponseDTO[]> => {
+    const pets = await petRepository.findSimilar(petId, radius ?? DEFAULT_SIMILAR_RADIUS_M, SIMILAR_PETS_LIMIT);
+    return pets.map(mapToSimilarResponseDTO);
+  };
+
   return {
     reportMissingPet,
     getPetsNearby,
@@ -153,5 +171,6 @@ export const createPetsService = (
     updatePet,
     updatePetStatus,
     deletePet,
+    getSimilarPets,
   };
 };

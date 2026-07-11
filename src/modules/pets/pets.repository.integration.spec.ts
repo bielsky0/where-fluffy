@@ -258,6 +258,101 @@ describe('createPetRepository (integration)', () => {
     });
   });
 
+  describe('findSimilar', () => {
+    // 768-wymiarowy wektor jednostkowy w kierunku osi `axis` — cosine distance między dwoma
+    // takimi wektorami jest 0 (identyczne) gdy `axis` jest takie samo, i 1 (ortogonalne) gdy różne
+    // — wystarczające, by rozróżnić "podobny"/"niepodobny" embedding w testach bez prawdziwego AI.
+    const unitVector = (axis: number): number[] => Array.from({ length: 768 }, (_, i) => (i === axis ? 1 : 0));
+
+    const saveWithEmbedding = async (overrides: Partial<CreatePetRecordDTO>, embeddingAxis: number) => {
+      const pet = await repository.save(buildCreateDto(overrides));
+      await repository.updateEmbedding(pet.id, unitVector(embeddingAxis));
+      return pet;
+    };
+
+    it('ranks a near, embedding-similar candidate first', async () => {
+      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      const similarNear = await saveWithEmbedding({ location: NEAR }, 0);
+      const dissimilarNear = await saveWithEmbedding({ location: NEAR }, 1);
+
+      const results = await repository.findSimilar(source.id, 5000, 4);
+
+      expect(results.map((p) => p.id)).toEqual([similarNear.id, dissimilarNear.id]);
+    });
+
+    it('excludes the source pet itself', async () => {
+      const source = await saveWithEmbedding({ location: CENTER }, 0);
+
+      const results = await repository.findSimilar(source.id, 5000, 4);
+
+      expect(results.map((p) => p.id)).not.toContain(source.id);
+    });
+
+    it('excludes candidates outside the radius, even with an identical embedding', async () => {
+      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      await saveWithEmbedding({ location: FAR }, 0);
+
+      const results = await repository.findSimilar(source.id, 5000, 4);
+
+      expect(results).toEqual([]);
+    });
+
+    it('excludes candidates whose status is not "missing"', async () => {
+      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      const candidate = await repository.save(buildCreateDto({ location: NEAR, status: 'found' }));
+      await repository.updateEmbedding(candidate.id, unitVector(0));
+
+      const results = await repository.findSimilar(source.id, 5000, 4);
+
+      expect(results).toEqual([]);
+    });
+
+    it('excludes candidates without an embedding yet', async () => {
+      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      await repository.save(buildCreateDto({ location: NEAR })); // never calls updateEmbedding
+
+      const results = await repository.findSimilar(source.id, 5000, 4);
+
+      expect(results).toEqual([]);
+    });
+
+    it('returns distanceMeters computed relative to the source pet', async () => {
+      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      await saveWithEmbedding({ location: NEAR }, 0); // ~100m north of CENTER
+
+      const [result] = await repository.findSimilar(source.id, 5000, 4);
+
+      expect(result.distanceMeters).toBeGreaterThan(50);
+      expect(result.distanceMeters).toBeLessThan(200);
+    });
+
+    it('respects the limit even when more candidates qualify', async () => {
+      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      for (let i = 0; i < 5; i += 1) {
+        await saveWithEmbedding({ location: NEAR }, 0);
+      }
+
+      const results = await repository.findSimilar(source.id, 5000, 2);
+
+      expect(results).toHaveLength(2);
+    });
+
+    it('returns an empty array when the source petId does not exist', async () => {
+      const results = await repository.findSimilar(randomUUID(), 5000, 4);
+
+      expect(results).toEqual([]);
+    });
+
+    it('returns an empty array when the source pet has no embedding yet', async () => {
+      const source = await repository.save(buildCreateDto({ location: CENTER })); // never calls updateEmbedding
+      await saveWithEmbedding({ location: NEAR }, 0);
+
+      const results = await repository.findSimilar(source.id, 5000, 4);
+
+      expect(results).toEqual([]);
+    });
+  });
+
   describe('findByOwnerId', () => {
     it('returns only the given owner\'s pets, newest first', async () => {
       const otherOwner = await prisma.user.create({

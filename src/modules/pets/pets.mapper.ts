@@ -1,5 +1,6 @@
 import { PetResponseDTO } from './dto/pet-response.dto.js';
-import { IPet } from './interfaces/pets.interface.js';
+import { SimilarPetResponseDTO } from './dto/similar-pet-response.dto.js';
+import { ISimilarPet, IPet } from './interfaces/pets.interface.js';
 import { PetCategory } from './pets.category.js';
 
 // Typ pomocniczy dla bazy danych (odzwierciedla to, co zwraca PostGIS po ST_X/ST_Y)
@@ -63,4 +64,18 @@ export const mapToResponseDTO = (pet: IPet): PetResponseDTO => ({
     lng: Number(pet.location.lng),
   },
   createdAt: pet.createdAt.toISOString(),
+});
+
+// "Podobne zwierzęta w okolicy" — ten sam wiersz co RawPetRow plus ST_Distance policzone przez
+// findSimilar (patrz pets.repository.ts).
+export type RawSimilarPetRow = RawPetRow & { distanceMeters: number };
+
+export const mapToSimilarDomain = (row: RawSimilarPetRow): ISimilarPet => ({
+  ...mapToDomain(row),
+  distanceMeters: Number(row.distanceMeters),
+});
+
+export const mapToSimilarResponseDTO = (pet: ISimilarPet): SimilarPetResponseDTO => ({
+  ...mapToResponseDTO(pet),
+  distanceMeters: Number(pet.distanceMeters),
 });

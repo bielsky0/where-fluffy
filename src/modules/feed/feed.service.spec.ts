@@ -51,6 +51,7 @@ describe('createFeedService', () => {
       update: jest.fn(),
       updateStatus: jest.fn(),
       deleteById: jest.fn(),
+      findSimilar: jest.fn(),
     };
   });
 

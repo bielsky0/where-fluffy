@@ -41,6 +41,10 @@ export type PetUpdatePatch = Partial<{
   location: { lat: number; lng: number };
 }>;
 
+// "Podobne zwierzęta w okolicy" — wiersz kandydata plus odległość (metry) od zwierzaka źródłowego,
+// policzona przez ST_Distance po stronie bazy (patrz pets.repository.ts's findSimilar).
+export type ISimilarPet = IPet & { distanceMeters: number };
+
 // Funkcyjny kontrakt repozytorium (do wstrzykiwania przez domknięcie w service/testach)
 export type PetRepository = {
   findById: (id: string) => Promise<IPet | null>;
@@ -58,4 +62,9 @@ export type PetRepository = {
   update: (petId: string, patch: PetUpdatePatch) => Promise<IPet | null>;
   updateStatus: (petId: string, status: IPet['status']) => Promise<IPet | null>;
   deleteById: (petId: string) => Promise<'deleted' | 'not_found'>;
+  // Łączy podobieństwo embeddingu (cosine, <=>) z filtrem geograficznym (ST_DWithin) wokół
+  // lokalizacji zwierzaka o id=petId — patrz pets.repository.ts's findSimilar dla pełnego SQL-a
+  // i listy przypadków, które celowo zwracają [] zamiast rzucać (petId nie istnieje, brak
+  // embeddingu/lokalizacji źródła, zero trafień w promieniu).
+  findSimilar: (petId: string, radiusInMeters: number, limit: number) => Promise<ISimilarPet[]>;
 };

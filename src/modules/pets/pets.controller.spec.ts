@@ -10,7 +10,9 @@ import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 import { errorHandler } from '../../shared/middleware/error.middleware.js';
 import { validate } from '../../shared/middleware/validate.js';
+import { validateQuery } from '../../shared/middleware/validate-query.js';
 import { updatePetSchema, updatePetStatusSchema } from './pets.schema.js';
+import { similarPetsQuerySchema } from './similar-pets.schema.js';
 
 // Ten sam wzorzec co comments.controller.spec.ts: minimalna, samodzielna apka Express z
 // prawdziwym serwisem/kontrolerem zbudowanym na mockowanych zależnościach, i wstrzykniętym
@@ -60,6 +62,7 @@ const buildTestApp = (repository: PetRepository, userId = 'owner-1'): Express =>
     asyncHandler(controller.updateStatus),
   );
   app.delete('/pets/:petId', fakeAuthenticate(userId), asyncHandler(controller.remove));
+  app.get('/pets/:petId/similar', validateQuery(similarPetsQuerySchema), asyncHandler(controller.getSimilar));
 
   app.use(errorHandler);
   return app;
@@ -74,6 +77,7 @@ const buildMockPetRepository = (): jest.Mocked<PetRepository> => ({
   update: jest.fn(),
   updateStatus: jest.fn(),
   deleteById: jest.fn(),
+  findSimilar: jest.fn(),
 });
 
 describe('pets controller (via supertest)', () => {
@@ -201,6 +205,48 @@ describe('pets controller (via supertest)', () => {
       const response = await request(app).delete('/pets/missing-id');
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe('GET /pets/:petId/similar', () => {
+    it('returns 200 with the service result for a valid request', async () => {
+      const similar = buildPet({ id: 'pet-2' });
+      mockRepository.findSimilar.mockResolvedValue([{ ...similar, distanceMeters: 500 }]);
+      const app = buildTestApp(mockRepository);
+
+      const response = await request(app).get('/pets/pet-1/similar');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([expect.objectContaining({ id: 'pet-2', distanceMeters: 500 })]);
+      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 15_000, 4);
+    });
+
+    it('returns 200 with an empty array when nothing similar is found nearby', async () => {
+      mockRepository.findSimilar.mockResolvedValue([]);
+      const app = buildTestApp(mockRepository);
+
+      const response = await request(app).get('/pets/pet-1/similar');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+
+    it('passes a valid radius query param through to the service', async () => {
+      mockRepository.findSimilar.mockResolvedValue([]);
+      const app = buildTestApp(mockRepository);
+
+      await request(app).get('/pets/pet-1/similar?radius=5000');
+
+      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 5000, 4);
+    });
+
+    it('returns 400 for an invalid radius query param', async () => {
+      const app = buildTestApp(mockRepository);
+
+      const response = await request(app).get('/pets/pet-1/similar?radius=-10');
+
+      expect(response.status).toBe(400);
+      expect(mockRepository.findSimilar).not.toHaveBeenCalled();
     });
   });
 });

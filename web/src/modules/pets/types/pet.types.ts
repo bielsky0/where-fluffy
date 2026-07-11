@@ -35,6 +35,12 @@ export interface Pet {
   createdAt: string;
 }
 
+// Mirrors the backend's SimilarPetResponseDTO (src/modules/pets/dto/similar-pet-response.dto.ts)
+// — GET /pets/:petId/similar.
+export interface SimilarPet extends Pet {
+  distanceMeters: number;
+}
+
 export interface NearbyPetsQuery {
   lat: number;
   lng: number;

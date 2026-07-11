@@ -7,6 +7,7 @@ generated/
 
 # Zmienne środowiskowe (KRYTYCZNE)
 .env
+.env.production
 
 # Logi i śmieci systemowe
 npm-debug.log*

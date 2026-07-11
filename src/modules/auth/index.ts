@@ -2,6 +2,7 @@ import { Resend } from 'resend';
 import { prisma } from '../../shared/prisma.js';
 import { redisClient } from '../../shared/infrastructure/redis.js';
 import { JWT_SECRET } from '../../shared/config/auth.config.js';
+import { RESEND_API_KEY, EMAIL_FROM_ADDRESS } from '../../shared/config/email.config.js';
 import { oauthConfig } from '../../shared/config/oauth.config.js';
 import { createAuthRepository } from './auth.repository.js';
 import { createBcryptPasswordHasher } from './auth.hasher.js';
@@ -23,15 +24,12 @@ export const tokenService = createJwtTokenService(JWT_SECRET);
 // The `Resend` SDK's constructor throws synchronously if the key is missing/empty — so it can
 // only be constructed when a real key is actually configured, or importing this module (and
 // therefore booting the whole app) would crash in local dev, where RESEND_API_KEY is normally
-// unset and requestOtp never calls sendOtpEmail anyway (see auth.service.ts's isDev branch). If
-// this stub ever IS called (NODE_ENV=production without a real key configured), it fails loudly
-// with a clear AppError instead of silently no-op'ing.
-const resendApiKey = process.env.RESEND_API_KEY;
-export const emailSender: EmailSender = resendApiKey
-  ? createResendEmailSender(
-      new Resend(resendApiKey),
-      process.env.EMAIL_FROM_ADDRESS || "Where's Fluffy <onboarding@resend.dev>",
-    )
+// unset and requestOtp never calls sendOtpEmail anyway (see auth.service.ts's isDev branch).
+// email.config.ts already throws at boot if NODE_ENV=production without a real key, so this
+// branch is now only reachable in dev/test — kept as a clear failure instead of a silent no-op
+// if requestOtp's isDev branch is ever bypassed.
+export const emailSender: EmailSender = RESEND_API_KEY
+  ? createResendEmailSender(new Resend(RESEND_API_KEY), EMAIL_FROM_ADDRESS)
   : {
       sendOtpEmail: async () => {
         throw createAppError(500, 'RESEND_API_KEY nie jest skonfigurowany', true, 'EMAIL_SEND_FAILED');

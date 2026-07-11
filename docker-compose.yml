@@ -43,7 +43,7 @@ services:
     build:
       context: ./src
     environment:
-      DATABASE_URL: "postgresql://user:password@db:5432/fluffy_db"
+      DATABASE_URL: "postgresql://user:password@pgbouncer:6432/fluffy_db"
       REDIS_URL: "redis://redis:6379"
       OTEL_SERVICE_NAME: "where-fluffy-api"
       # Only this differs from the host-run `npm run dev` workflow's .env: inside the compose
@@ -94,6 +94,7 @@ services:
                      # they'd fight over this same host port.
     depends_on:
       - db
+      - pgbouncer
       - redis
       - alloy
     networks:
@@ -131,7 +132,7 @@ services:
       context: ./src
     command: ["node", "dist/ai-worker/main.js"]
     environment:
-      DATABASE_URL: "postgresql://user:password@db:5432/fluffy_db"
+      DATABASE_URL: "postgresql://user:password@pgbouncer:6432/fluffy_db"
       REDIS_URL: "redis://redis:6379"
       OTEL_SERVICE_NAME: "where-fluffy-ai-worker"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy:4317"
@@ -142,6 +143,8 @@ services:
     restart: unless-stopped
     depends_on:
       db:
+        condition: service_started
+      pgbouncer:
         condition: service_started
       redis:
         condition: service_started

@@ -40,10 +40,14 @@ services:
 
   api:
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:?POSTGRES_DB must be set}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@pgbouncer:6432/${POSTGRES_DB:?POSTGRES_DB must be set}"
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a real, non-default secret}"
       FRONTEND_URL: "${FRONTEND_URL:?FRONTEND_URL must be set, e.g. https://example.com}"
       BACKEND_PUBLIC_URL: "${BACKEND_PUBLIC_URL:?BACKEND_PUBLIC_URL must be set, e.g. https://example.com}"
+      # email.config.ts already throws at boot in production if this is unset — repeated here
+      # (same :? pattern as JWT_SECRET above) so a missing key fails `docker compose up` itself
+      # instead of a container crash-loop discovered later via `docker compose logs`.
+      RESEND_API_KEY: "${RESEND_API_KEY:?RESEND_API_KEY must be set in production}"
       # Dev-only escape hatch (see docker-compose.yml's api service) — must NOT be set in
       # production, or oauth.config.ts's https:// requirement on FRONTEND_URL is silently bypassed.
       ALLOW_INSECURE_ORIGIN: "false"
@@ -63,6 +67,8 @@ services:
     depends_on:
       db:
         condition: service_started
+      pgbouncer:
+        condition: service_started
       redis:
         condition: service_started
       alloy:
@@ -70,13 +76,18 @@ services:
 
   ai-worker:
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:?POSTGRES_DB must be set}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@pgbouncer:6432/${POSTGRES_DB:?POSTGRES_DB must be set}"
 
   # Static frontend (see web/Dockerfile: Vite build -> nginx serving web/dist). Not reachable
   # directly — only `proxy` routes to it, over `fluffy-net`, via the internal DNS name `web`.
   web:
     build:
       context: ./web
+      args:
+        # Defaults match the code's own fallbacks (apiClient.ts / telemetry.ts) — leaving these
+        # unset in .env.production keeps behavior identical to today.
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-/api/v1}"
+        VITE_OTEL_EXPORTER_OTLP_ENDPOINT: "${VITE_OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318/v1/traces}"
     restart: unless-stopped
     networks:
       - fluffy-net

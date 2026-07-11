@@ -42,7 +42,7 @@ describe('createFeedService', () => {
 
   beforeEach(() => {
     mockFeedRepository = { findFeedPage: jest.fn() };
-    mockPetRepository = { findById: jest.fn(), save: jest.fn(), findNearLocation: jest.fn() };
+    mockPetRepository = { findById: jest.fn(), save: jest.fn(), findNearLocation: jest.fn(), updateEmbedding: jest.fn() };
   });
 
   describe('getUrgentNearby', () => {

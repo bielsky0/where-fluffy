@@ -6,6 +6,7 @@ import locationRoutes from './modules/location/location.routes.js';
 import mapRoutes from './modules/map/map.routes.js';
 import seoRoutes from './modules/seo/seo.routes.js';
 import geocodeRoutes from './modules/geocode/geocode.routes.js';
+import searchRoutes from './modules/search/search.routes.js';
 
 const apiRouter = Router();
 
@@ -16,5 +17,6 @@ apiRouter.use('/location', locationRoutes);
 apiRouter.use('/map', mapRoutes);
 apiRouter.use('/seo', seoRoutes);
 apiRouter.use('/geocode', geocodeRoutes);
+apiRouter.use('/search', searchRoutes);
 
 export default apiRouter;

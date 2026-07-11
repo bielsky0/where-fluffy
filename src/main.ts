@@ -17,6 +17,7 @@ import { registerAllGateways } from './app.gateways.js';
 import { initRedis, redisClient } from './shared/infrastructure/redis.js';
 import { prisma } from './shared/prisma.js';
 import { locationRepository } from './modules/location/index.js';
+import { petEmbeddingQueue, queueConnection } from './shared/queue/index.js';
 
 const PORT = process.env.PORT || 3000;
 
@@ -70,6 +71,8 @@ async function bootstrap() {
       server.close(async () => {
         try {
           io.close();
+          await petEmbeddingQueue.close();
+          await queueConnection.quit();
           await prisma.$disconnect();
           await Promise.all([redisClient.quit(), pubClient.quit(), subClient.quit()]);
           // Na końcu, żeby spany/metryki wygenerowane przez zamykanie powyższych klientów

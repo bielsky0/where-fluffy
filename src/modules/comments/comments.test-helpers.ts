@@ -14,6 +14,7 @@ export const buildMockPetRepository = (): jest.Mocked<PetRepository> => ({
   findById: jest.fn(),
   save: jest.fn(),
   findNearLocation: jest.fn(),
+  updateEmbedding: jest.fn(),
 });
 
 export const buildPet = (overrides: Partial<IPet> = {}): IPet => ({

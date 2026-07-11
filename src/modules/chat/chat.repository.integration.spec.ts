@@ -20,7 +20,11 @@ describe('createChatRepository (integration)', () => {
   let pet: Pet;
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgis/postgis:16-3.4')
+    // "where-fluffy/postgres-ai:16" (infra/db/Dockerfile) — postgis/postgis:16-3.4 plus pgvector.
+    // Required here even though this file never touches Pet.embedding: `db push` diffs/creates
+    // the *entire* schema.prisma, including Pet's `embedding vector(768)` column, so every
+    // integration test's Postgres needs pgvector available, not just pets/search's.
+    container = await new PostgreSqlContainer('where-fluffy/postgres-ai:16')
       .withDatabase('fluffy_chat_test')
       .withUsername('test')
       .withPassword('test')
@@ -28,6 +32,10 @@ describe('createChatRepository (integration)', () => {
         {
           source: path.resolve(SRC_ROOT, '../init-scripts/01-init-postgis.sql'),
           target: '/docker-entrypoint-initdb.d/01-init-postgis.sql',
+        },
+        {
+          source: path.resolve(SRC_ROOT, '../init-scripts/03-init-pgvector.sql'),
+          target: '/docker-entrypoint-initdb.d/03-init-pgvector.sql',
         },
       ])
       .start();

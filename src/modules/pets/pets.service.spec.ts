@@ -3,6 +3,7 @@ import { IPet, PetRepository } from './interfaces/pets.interface.js';
 import { CreatePetDTO } from './dto/create-pet.dto.js';
 import { PhotoService } from '../../shared/photo/photo.service.js';
 import { GeocodingService } from '../../shared/geocoding/interfaces/geocoding.interface.js';
+import { PetEmbeddingQueue } from '../../shared/queue/pet-embedding.queue.js';
 
 const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
   id: 'pet-1',
@@ -40,18 +41,24 @@ describe('createPetsService', () => {
   let mockRepository: jest.Mocked<PetRepository>;
   let mockPhotoService: jest.Mocked<PhotoService>;
   let mockGeocodingService: jest.Mocked<GeocodingService>;
+  let mockPetEmbeddingQueue: jest.Mocked<PetEmbeddingQueue>;
 
   beforeEach(() => {
     mockRepository = {
       findById: jest.fn(),
       save: jest.fn(),
       findNearLocation: jest.fn(),
+      updateEmbedding: jest.fn(),
     };
     mockPhotoService = {
       store: jest.fn(),
     };
     mockGeocodingService = {
       reverseGeocode: jest.fn().mockResolvedValue(null),
+    };
+    mockPetEmbeddingQueue = {
+      enqueueEmbedPetData: jest.fn(),
+      close: jest.fn(),
     };
   });
 
@@ -60,7 +67,7 @@ describe('createPetsService', () => {
       const dto = buildCreateDto();
       const { photoBase64s: _photoBase64s, ...restDto } = dto;
       mockRepository.save.mockResolvedValue(buildPet());
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await service.reportMissingPet(dto);
 
@@ -77,7 +84,7 @@ describe('createPetsService', () => {
     it('categorizes the pet from its species before saving', async () => {
       const dto = buildCreateDto({ species: 'Kot europejski' });
       mockRepository.save.mockResolvedValue(buildPet({ category: 'cat' }));
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await service.reportMissingPet(dto);
 
@@ -93,7 +100,7 @@ describe('createPetsService', () => {
       mockPhotoService.store.mockResolvedValueOnce('data:image/jpeg;base64,AAA');
       mockPhotoService.store.mockResolvedValueOnce('data:image/jpeg;base64,BBB');
       mockRepository.save.mockResolvedValue(buildPet({ photoUrl: 'data:image/jpeg;base64,AAA' }));
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await service.reportMissingPet(dto);
 
@@ -110,7 +117,7 @@ describe('createPetsService', () => {
 
     it('skips PhotoService entirely when no photos were submitted', async () => {
       mockRepository.save.mockResolvedValue(buildPet());
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await service.reportMissingPet(buildCreateDto());
 
@@ -120,7 +127,7 @@ describe('createPetsService', () => {
     it('maps the saved domain pet into a PetResponseDTO', async () => {
       const savedPet = buildPet({ id: 'pet-99', reward: 250 });
       mockRepository.save.mockResolvedValue(savedPet);
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       const result = await service.reportMissingPet(buildCreateDto());
 
@@ -144,7 +151,7 @@ describe('createPetsService', () => {
 
     it('propagates a rejection from repository.save without swallowing it', async () => {
       mockRepository.save.mockRejectedValue(new Error('DB failure'));
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await expect(service.reportMissingPet(buildCreateDto())).rejects.toThrow('DB failure');
     });
@@ -153,7 +160,7 @@ describe('createPetsService', () => {
       const dto = buildCreateDto({ location: { lat: 52.2297, lng: 21.0122 } });
       mockGeocodingService.reverseGeocode.mockResolvedValue('Warszawa');
       mockRepository.save.mockResolvedValue(buildPet({ city: 'Warszawa' }));
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await service.reportMissingPet(dto);
 
@@ -164,7 +171,7 @@ describe('createPetsService', () => {
     it('saves the pet with city null when geocoding resolves null, without failing the request', async () => {
       mockGeocodingService.reverseGeocode.mockResolvedValue(null);
       mockRepository.save.mockResolvedValue(buildPet());
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await expect(service.reportMissingPet(buildCreateDto())).resolves.toBeDefined();
 
@@ -174,11 +181,29 @@ describe('createPetsService', () => {
     it('omits name from the saved record when reporting a found pet without one', async () => {
       const dto = buildCreateDto({ status: 'found', name: undefined, reward: 0 });
       mockRepository.save.mockResolvedValue(buildPet({ name: null, status: 'found' }));
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await service.reportMissingPet(dto);
 
       expect(mockRepository.save).toHaveBeenCalledWith(expect.objectContaining({ name: undefined }));
+    });
+
+    it('enqueues an EMBED_PET_DATA job for the saved pet after repository.save succeeds', async () => {
+      const savedPet = buildPet({ id: 'pet-42' });
+      mockRepository.save.mockResolvedValue(savedPet);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await service.reportMissingPet(buildCreateDto());
+
+      expect(mockPetEmbeddingQueue.enqueueEmbedPetData).toHaveBeenCalledWith('pet-42');
+    });
+
+    it('does not fail the request when enqueueing the embedding job throws', async () => {
+      mockRepository.save.mockResolvedValue(buildPet({ id: 'pet-42' }));
+      mockPetEmbeddingQueue.enqueueEmbedPetData.mockRejectedValue(new Error('redis unavailable'));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await expect(service.reportMissingPet(buildCreateDto())).resolves.toBeDefined();
     });
   });
 
@@ -186,7 +211,7 @@ describe('createPetsService', () => {
     it('passes lat/lng/radius through to repository.findNearLocation and maps the results', async () => {
       const nearbyPet = buildPet({ id: 'pet-2' });
       mockRepository.findNearLocation.mockResolvedValue([nearbyPet]);
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       const result = await service.getPetsNearby(52.2297, 21.0122, 1000);
 
@@ -213,7 +238,7 @@ describe('createPetsService', () => {
 
     it('defaults radius to 5000 when not provided', async () => {
       mockRepository.findNearLocation.mockResolvedValue([]);
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await service.getPetsNearby(52.2297, 21.0122);
 
@@ -222,7 +247,7 @@ describe('createPetsService', () => {
 
     it('returns an empty array, not null/undefined, when the repository finds nothing', async () => {
       mockRepository.findNearLocation.mockResolvedValue([]);
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       const result = await service.getPetsNearby(52.2297, 21.0122);
 
@@ -231,7 +256,7 @@ describe('createPetsService', () => {
 
     it('propagates a rejection from repository.findNearLocation without swallowing it', async () => {
       mockRepository.findNearLocation.mockRejectedValue(new Error('DB failure'));
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await expect(service.getPetsNearby(52.2297, 21.0122)).rejects.toThrow('DB failure');
     });
@@ -241,7 +266,7 @@ describe('createPetsService', () => {
     it('maps the found pet into a PetResponseDTO', async () => {
       const pet = buildPet({ id: 'pet-7' });
       mockRepository.findById.mockResolvedValue(pet);
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       const result = await service.getPetById('pet-7');
 
@@ -251,7 +276,7 @@ describe('createPetsService', () => {
 
     it('throws a 404 AppError when the pet does not exist', async () => {
       mockRepository.findById.mockResolvedValue(null);
-      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
 
       await expect(service.getPetById('missing-id')).rejects.toMatchObject({
         statusCode: 404,

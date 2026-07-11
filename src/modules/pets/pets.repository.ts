@@ -62,5 +62,20 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     return pets.map(mapToDomain);
   };
 
-  return { findById, save, findNearLocation };
+  // pgvector przyjmuje wektory na wejściu jako tekstowy literał "[v1,v2,...]" rzutowany po
+  // stronie serwera na ::vector — ta sama technika co ST_MakePoint(${lng}, ${lat}) powyżej.
+  // Zawsze UPDATE, nigdy INSERT — spełnia wymóg idempotentności (dwie szybkie edycje tego
+  // samego zwierzaka => dwa zadania w kolejce => dwa UPDATE-y => wygrywa ostatni zapis, bez
+  // duplikatów). Celowo nie dotyka "updatedAt" — to zapis systemowy w tle, nie edycja
+  // użytkownika, więc GET /pets/:id nie pokaże mylącego "ostatnio zaktualizowano" wywołanego
+  // wyłącznie przez backfill embeddingu.
+  const updateEmbedding: PetRepository['updateEmbedding'] = async (petId, vector) => {
+    const vectorLiteral = `[${vector.join(',')}]`;
+    const affected = await prisma.$executeRaw`
+      UPDATE "Pet" SET embedding = ${vectorLiteral}::vector WHERE id = ${petId}
+    `;
+    return affected > 0 ? 'updated' : 'not_found';
+  };
+
+  return { findById, save, findNearLocation, updateEmbedding };
 };

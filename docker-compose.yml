@@ -1,6 +1,11 @@
 services:
   db:
-    image: postgis/postgis:16-3.4
+    build:
+      context: ./infra/db
+    # Explicit tag (not just relying on compose's implicit build tag) so testcontainers-based
+    # integration tests can reference this same pgvector-enabled image by name instead of the
+    # bare "postgis/postgis:16-3.4" tag, which has no pgvector extension installed.
+    image: where-fluffy/postgres-ai:16
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
@@ -72,6 +77,12 @@ services:
       # you actually want this container emailing real OTP codes.
       RESEND_API_KEY: ""
       EMAIL_FROM_ADDRESS: "Where's Fluffy <onboarding@resend.dev>"
+      # Vector AI & Embedding Pipeline — real self-hosted model (verified working end-to-end
+      # against ai-worker/ai-model, see search.repository.ts's <=> query). ai-model is
+      # deliberately NOT in this service's depends_on: semantic search must degrade (503, see
+      # search.service.ts) rather than block api startup on the model container being healthy.
+      EMBEDDING_SERVICE_URL: "http://ai-model:11434"
+      EMBEDDING_PROVIDER: "local"
     ports:
       - "3000:3000" # alternative to running `npm run dev` on the host — don't run both at once,
                      # they'd fight over this same host port.
@@ -79,6 +90,62 @@ services:
       - db
       - redis
       - alloy
+    networks:
+      - fluffy-net
+
+  # Vector AI & Embedding Pipeline — self-hosted embedding model (Ollama + nomic-embed-text,
+  # 768 dims), zero paid third-party AI APIs. Model is baked into the image at build time
+  # (infra/ai-model/Dockerfile), not pulled at container startup, so first boot is immediately
+  # ready to serve embeddings.
+  ai-model:
+    build:
+      context: ./infra/ai-model
+    image: where-fluffy/ai-model:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+    networks:
+      - fluffy-net
+
+  # Second entrypoint of the same api image/codebase (src/ai-worker/main.ts), not a separate
+  # package — only the `command:` differs from the api service above. Consumes the
+  # EMBED_PET_DATA BullMQ queue and writes Pet.embedding via the real self-hosted model.
+  ai-worker:
+    build:
+      context: ./src
+    command: ["node", "dist/ai-worker/main.js"]
+    environment:
+      DATABASE_URL: "postgresql://user:password@db:5432/fluffy_db"
+      REDIS_URL: "redis://redis:6379"
+      OTEL_SERVICE_NAME: "where-fluffy-ai-worker"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy:4317"
+      NODE_ENV: production
+      EMBEDDING_SERVICE_URL: "http://ai-model:11434"
+      EMBEDDING_PROVIDER: "local"
+      AI_WORKER_CONCURRENCY: "2"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      ai-model:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
     networks:
       - fluffy-net
 
@@ -176,6 +243,7 @@ volumes:
   prometheus-data:
   grafana-data:
   alloy-data:
+  ollama-data:
 
 networks:
   fluffy-net:

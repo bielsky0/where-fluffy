@@ -35,4 +35,7 @@ export type PetRepository = {
     radiusInMeters: number,
     options?: { category?: PetCategory; limit?: number },
   ) => Promise<IPet[]>;
+  // Zwraca 'not_found' zamiast rzucać, gdy zwierzak zniknął między enqueue a przetworzeniem
+  // zadania (uzasadniony race, nie błąd) — patrz ai-worker/embed-pet-data.processor.ts.
+  updateEmbedding: (petId: string, vector: number[]) => Promise<'updated' | 'not_found'>;
 };

@@ -25,7 +25,11 @@ describe('createPetRepository (integration)', () => {
   let owner: User;
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgis/postgis:16-3.4')
+    // "where-fluffy/postgres-ai:16" (infra/db/Dockerfile) — postgis/postgis:16-3.4 plus the
+    // pgvector extension package, needed here for the updateEmbedding tests below. Must be
+    // built locally first (`docker compose build db`) — bare "postgis/postgis:16-3.4" has no
+    // pgvector installed.
+    container = await new PostgreSqlContainer('where-fluffy/postgres-ai:16')
       .withDatabase('fluffy_test')
       .withUsername('test')
       .withPassword('test')
@@ -33,6 +37,10 @@ describe('createPetRepository (integration)', () => {
         {
           source: path.resolve(SRC_ROOT, '../init-scripts/01-init-postgis.sql'),
           target: '/docker-entrypoint-initdb.d/01-init-postgis.sql',
+        },
+        {
+          source: path.resolve(SRC_ROOT, '../init-scripts/03-init-pgvector.sql'),
+          target: '/docker-entrypoint-initdb.d/03-init-pgvector.sql',
         },
       ])
       .start();
@@ -210,6 +218,43 @@ describe('createPetRepository (integration)', () => {
       const results = await repository.findNearLocation(CENTER.lat, CENTER.lng, 5000, { limit: 2 });
 
       expect(results).toHaveLength(2);
+    });
+  });
+
+  describe('updateEmbedding', () => {
+    it('writes the vector and it is readable back via a raw SELECT', async () => {
+      const pet = await repository.save(buildCreateDto());
+      const vector = Array.from({ length: 768 }, (_, i) => i / 768);
+
+      const result = await repository.updateEmbedding(pet.id, vector);
+
+      expect(result).toBe('updated');
+      const [row] = await prisma.$queryRaw<[{ embedding: string }]>`
+        SELECT embedding::text as embedding FROM "Pet" WHERE id = ${pet.id}
+      `;
+      const persisted = row.embedding.slice(1, -1).split(',').map(Number);
+      expect(persisted[0]).toBeCloseTo(vector[0], 5);
+      expect(persisted[767]).toBeCloseTo(vector[767], 5);
+    });
+
+    it('overwrites a previously written vector (idempotent on repeated calls)', async () => {
+      const pet = await repository.save(buildCreateDto());
+      await repository.updateEmbedding(pet.id, Array(768).fill(0.1));
+
+      const result = await repository.updateEmbedding(pet.id, Array(768).fill(0.9));
+
+      expect(result).toBe('updated');
+      const [row] = await prisma.$queryRaw<[{ embedding: string }]>`
+        SELECT embedding::text as embedding FROM "Pet" WHERE id = ${pet.id}
+      `;
+      const persisted = row.embedding.slice(1, -1).split(',').map(Number);
+      expect(persisted[0]).toBeCloseTo(0.9, 5);
+    });
+
+    it('returns "not_found" for an id that does not exist, without throwing', async () => {
+      const result = await repository.updateEmbedding(randomUUID(), Array(768).fill(0.1));
+
+      expect(result).toBe('not_found');
     });
   });
 });

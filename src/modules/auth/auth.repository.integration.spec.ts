@@ -16,7 +16,8 @@ describe('createAuthRepository (integration)', () => {
   let repository: AuthRepository;
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgis/postgis:16-3.4')
+    // "where-fluffy/postgres-ai:16" (infra/db/Dockerfile) — postgis/postgis:16-3.4 plus pgvector.
+    container = await new PostgreSqlContainer('where-fluffy/postgres-ai:16')
       .withDatabase('fluffy_auth_test')
       .withUsername('test')
       .withPassword('test')
@@ -25,14 +26,19 @@ describe('createAuthRepository (integration)', () => {
           source: path.resolve(SRC_ROOT, '../init-scripts/01-init-postgis.sql'),
           target: '/docker-entrypoint-initdb.d/01-init-postgis.sql',
         },
+        {
+          source: path.resolve(SRC_ROOT, '../init-scripts/03-init-pgvector.sql'),
+          target: '/docker-entrypoint-initdb.d/03-init-pgvector.sql',
+        },
       ])
       .start();
 
     const databaseUrl = container.getConnectionUri();
 
     // Synchronizujemy cały schema.prisma (nie tylko User) bezpośrednio, tak samo jak w
-    // pets.repository.integration.spec.ts — extensions=[postgis] w schema.prisma wymaga obrazu
-    // z PostGIS niezależnie od tego, że ten plik testuje tylko model User.
+    // pets.repository.integration.spec.ts — db push diffs/creates the entire schema, including
+    // Pet's PostGIS geography column and vector(768) embedding column, regardless of which
+    // model(s) this file actually tests.
     execSync('npx prisma db push --skip-generate --accept-data-loss', {
       cwd: SRC_ROOT,
       env: { ...process.env, DATABASE_URL: databaseUrl },

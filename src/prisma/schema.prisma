@@ -6,6 +6,15 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Deliberately NOT declaring "vector" here alongside "postgis" — this list drives
+  // `prisma migrate`/`db push`'s automatic CREATE EXTENSION management, which runs against
+  // every module's testcontainer DB, most of which use the bare postgis/postgis image without
+  // pgvector installed (only pets/search's integration tests use the custom
+  // where-fluffy/postgres-ai image, via a copied init script — see init-scripts/03-init-pgvector.sql).
+  // Declaring "vector" here made `db push` try to enable it everywhere and broke every other
+  // module's integration suite. Pet.embedding's Unsupported("vector(768)") type doesn't need the
+  // extension declared here to parse — the hand-written migration's own
+  // `CREATE EXTENSION IF NOT EXISTS "vector"` is what provisions it for real deployments.
   extensions = [postgis]
 }
 
@@ -70,6 +79,14 @@ model Pet {
   // Pole PostGIS
   location  Unsupported("geography(Point, 4326)")?
 
+  // Wektor embeddingu do wyszukiwania semantycznego (patrz Vector AI & Embedding Pipeline).
+  // 768 wymiarów, żeby pasować do samohostowanego modelu nomic-embed-text (Ollama), nie do
+  // OpenAI text-embedding-3-small (1536) — ten projekt nie korzysta z płatnych API AI stron
+  // trzecich. Unsupported(...) z tego samego powodu co "location" powyżej: preview feature
+  // postgresqlExtensions nie ma pierwszoklasowego wsparcia dla typu vector/indeksu HNSW, więc
+  // wszystkie odczyty/zapisy idą przez surowe SQL (patrz pets.repository.ts / search.repository.ts).
+  embedding Unsupported("vector(768)")?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -80,6 +97,9 @@ model Pet {
 
   @@index([location], type: Gist)
   @@index([category])
+  // Celowo brak @@index([embedding], ...) tutaj — enum IndexType Prismy (dla postgresqlExtensions)
+  // nie zna wariantu Hnsw. Prawdziwy indeks (Pet_embedding_idx, USING hnsw) jest ręcznie zapisany
+  // w surowym SQL migracji, patrz prisma/migrations/<timestamp>_add_pet_embedding_vector/.
 }
 
 model Comment {

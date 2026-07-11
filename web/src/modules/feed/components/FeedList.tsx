@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { PetCard } from '@/modules/pets/components/PetCard';
+import { ErrorState } from '@/shared/components/ErrorState';
 import type { Coordinate } from '@/shared/components/map/types';
 import { useFeedInfinite } from '../api/useFeedInfinite';
 import type { FeedQueryParams } from '../types/feed.types';
@@ -19,7 +20,7 @@ interface FeedListProps {
 const ESTIMATED_ROW_HEIGHT = 340; // portrait PetCard (aspect-[16/9] image + 3-line metadata) + gap
 
 export function FeedList({ query, origin, scrollContainerRef, onSelectPet }: FeedListProps) {
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } = useFeedInfinite(query);
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError, refetch } = useFeedInfinite(query);
   const items = data?.pages.flatMap((page) => page.items) ?? [];
 
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -81,7 +82,16 @@ export function FeedList({ query, origin, scrollContainerRef, onSelectPet }: Fee
   }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) return <p className="px-4 py-8 text-center text-sm text-neutral-400">Ładowanie…</p>;
-  if (isError) return <p className="px-4 py-8 text-center text-sm text-red-600">Nie udało się wczytać ogłoszeń.</p>;
+  if (isError) {
+    return (
+      <ErrorState
+        icon="📡"
+        title="Ups! Coś poszło nie tak"
+        message="Nie udało się wczytać ogłoszeń."
+        action={{ label: 'Spróbuj ponownie', onClick: refetch }}
+      />
+    );
+  }
   if (items.length === 0) {
     return <p className="px-4 py-8 text-center text-sm text-neutral-400">Brak ogłoszeń w wybranej kategorii.</p>;
   }

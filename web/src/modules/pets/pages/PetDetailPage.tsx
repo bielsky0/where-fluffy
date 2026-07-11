@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { isNotFoundError } from '@/lib/apiClient';
+import NotFoundPage from '@/shared/pages/NotFoundPage';
+import { ServerErrorPage } from '@/shared/pages/ServerErrorPage';
 import { useAppUIStore } from '@/modules/app/store/useAppUIStore';
 import { readFreshIntent, usePendingIntentStore } from '@/modules/auth/store/usePendingIntentStore';
 import { usePetMapStore } from '../store/usePetMapStore';
@@ -62,7 +65,7 @@ export default function PetDetailPage() {
   const selectPet = usePetMapStore((state) => state.selectPet);
   const { origin, isResolving: isLocationResolving } = useAppLocation();
 
-  const { data: pet, isLoading, isError } = usePet(petId);
+  const { data: pet, isLoading, isError, error, refetch } = usePet(petId);
   const { data: sightings } = useSightings(petId);
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -119,15 +122,12 @@ export default function PetDetailPage() {
     );
   }
 
-  if (isError || !pet) {
-    return (
-      <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 bg-white px-6 text-center">
-        <p className="text-sm text-neutral-400">Nie udało się znaleźć tego zgłoszenia.</p>
-        <button type="button" onClick={handleBack} className="text-sm font-semibold underline" style={{ color: ANTHRACITE }}>
-          Wróć
-        </button>
-      </div>
-    );
+  if (isError) {
+    return isNotFoundError(error) ? <NotFoundPage /> : <ServerErrorPage onRetry={refetch} />;
+  }
+
+  if (!pet) {
+    return <NotFoundPage />;
   }
 
   const status = STATUS_COPY[pet.status];

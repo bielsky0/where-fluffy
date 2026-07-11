@@ -31,6 +31,7 @@ const PetDetailPage = asyncComponent(
   () => import('@/modules/pets/pages/PetDetailPage'),
   <p>Loading…</p>,
 );
+const NotFoundPage = asyncComponent(() => import('@/shared/pages/NotFoundPage'), <p>Loading…</p>);
 
 export const router = createBrowserRouter([
   { path: '/', element: <LandingPage /> },
@@ -48,4 +49,5 @@ export const router = createBrowserRouter([
     ),
   },
   { path: '/app/pets/:petId', element: <PetDetailPage /> },
+  { path: '*', element: <NotFoundPage /> },
 ]);

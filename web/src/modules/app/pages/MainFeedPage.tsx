@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Coordinate } from '@/shared/components/map/types';
+import { ErrorState } from '@/shared/components/ErrorState';
 import { cn } from '@/shared/lib/cn';
 import { PetCard } from '@/modules/pets/components/PetCard';
 import type { PetTypeFilter } from '@/modules/pets/lib/petType';
@@ -109,7 +110,12 @@ export function MainFeedPage() {
   const [category, setCategory] = useState<FeedCategory>('all');
   const apiCategory: PetTypeFilter | undefined = category === 'all' ? undefined : category;
 console.log(origin)
-  const { data: urgentPets, isLoading: isUrgentLoading, isError: isUrgentError } = useUrgentFeed({
+  const {
+    data: urgentPets,
+    isLoading: isUrgentLoading,
+    isError: isUrgentError,
+    refetch: refetchUrgent,
+  } = useUrgentFeed({
     ...origin,
     radius: 5000,
     category: apiCategory,
@@ -194,7 +200,12 @@ console.log(origin)
       >
         {isUrgentLoading && <p className="px-4 py-8 text-center text-sm text-neutral-400">Ładowanie…</p>}
         {isUrgentError && (
-          <p className="px-4 py-8 text-center text-sm text-red-600">Nie udało się wczytać zwierzaków w pobliżu.</p>
+          <ErrorState
+            icon="📡"
+            title="Ups! Coś poszło nie tak"
+            message="Nie udało się wczytać zwierzaków w pobliżu."
+            action={{ label: 'Spróbuj ponownie', onClick: refetchUrgent }}
+          />
         )}
         {!isUrgentLoading && !isUrgentError && (
           <CardCarousel

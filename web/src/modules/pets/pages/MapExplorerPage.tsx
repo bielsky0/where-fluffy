@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { useMapPins } from '@/modules/map/api/useMapPins';
@@ -6,7 +6,8 @@ import { useFeedInfiniteBbox } from '@/modules/feed/api/useFeedInfiniteBbox';
 import { useAppLocation } from '@/modules/location/api/useAppLocation';
 import { useDebouncedCallback } from '@/shared/hooks/useDebouncedCallback';
 import type { Bbox } from '@/shared/lib/bbox';
-import type { BoundsRect } from '@/shared/components/map/types';
+import type { BoundsRect, Coordinate } from '@/shared/components/map/types';
+import { ErrorState } from '@/shared/components/ErrorState';
 import { usePetMapStore } from '../store/usePetMapStore';
 import { matchesPetType, PET_TYPE_LABELS_PLURAL } from '../lib/petType';
 import { matchesTimeframe, TIMEFRAME_LABELS } from '../lib/timeframe';
@@ -74,17 +75,33 @@ export function MapExplorerPage() {
   const openSearch = useAppUIStore((state) => state.openSearch);
   const resetToMain = useAppUIStore((state) => state.resetToMain);
 
-  // Query center follows the map's own applied location filter — deliberately independent of
-  // MainFeedPage's own location (useAppLocation), so browsing the feed never depends on, or pays
-  // for, anything the map wizard has done. Drives the map's center/bbox/pins only — see
-  // `userOrigin` below for what drives displayed distance.
-  const queryCenter = appliedFilters.location?.coords ?? FALLBACK_ORIGIN;
-
   // The user's real position (GPS fix > GeoIP > static fallback, see useAppLocation's own
-  // three-tier doc comment) — deliberately distinct from `queryCenter` above. Distance shown on
-  // PetCard must answer "how far is this pet from me", not "how far is this pet from the point I
-  // searched"; those are the same value only when the user searches their own location.
+  // three-tier doc comment). Distance shown on PetCard must answer "how far is this pet from
+  // me", not "how far is this pet from the point I searched"; those are the same value only when
+  // the user searches their own location. Also feeds the one-shot auto-center effect below.
   const { origin: userOrigin } = useAppLocation();
+
+  const hasAutoCenteredRef = useRef(false);
+  const [resolvedOrigin, setResolvedOrigin] = useState<Coordinate | null>(null);
+
+  // Auto-centers the map on the user's real location the first time it resolves beyond the
+  // static fallback — but only if no explicit search-modal filter has been applied yet, since
+  // that must keep taking priority. One-shot via hasAutoCenteredRef: later origin refinements
+  // (e.g. geoip -> gps) shouldn't yank the map again once the user may have already panned it
+  // themselves.
+  useEffect(() => {
+    if (appliedFilters.location) return;
+    if (hasAutoCenteredRef.current) return;
+    if (userOrigin.source === 'fallback') return;
+    hasAutoCenteredRef.current = true;
+    setResolvedOrigin(userOrigin);
+  }, [userOrigin, appliedFilters.location]);
+
+  // Query center follows, in priority order: an explicit search-modal location filter, then the
+  // user's real resolved location (once available — see the auto-center effect above), then the
+  // static fallback. Only the *initial* centering comes from userOrigin; once the user pans the
+  // map or searches explicitly, this stops moving on its own.
+  const queryCenter = appliedFilters.location?.coords ?? resolvedOrigin ?? FALLBACK_ORIGIN;
 
   // Dual-query architecture (CLAUDE.md): the map's pins (lightweight, unpaginated, drives
   // clustering) and the drawer's cards (heavy DTO, cursor-paginated) are two independent
@@ -101,6 +118,7 @@ export function MapExplorerPage() {
     isFetchingNextPage,
     isLoading,
     isError,
+    refetch,
   } = useFeedInfiniteBbox(bbox, appliedFilters.petType);
   const feedPets = useMemo(() => feedData?.pages.flatMap((page) => page.items) ?? [], [feedData]);
 
@@ -224,7 +242,12 @@ export function MapExplorerPage() {
         >
           {isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Ładowanie…</p>}
           {isError && (
-            <p className="py-8 text-center text-sm text-destructive">Nie udało się wczytać zwierzaków w pobliżu.</p>
+            <ErrorState
+              icon="📡"
+              title="Ups! Coś poszło nie tak"
+              message="Nie udało się wczytać zwierzaków w pobliżu."
+              action={{ label: 'Spróbuj ponownie', onClick: refetch }}
+            />
           )}
           {!isLoading && !isError && (
             <PetResultsList

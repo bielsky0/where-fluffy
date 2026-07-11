@@ -16,6 +16,10 @@ export class ApiError extends Error {
   }
 }
 
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof ApiError && error.statusCode === 404;
+}
+
 // `credentials: 'include'` is required on every call — auth is an httpOnly `token` cookie
 // (see CLAUDE.md "Auth"), not a bearer header, so fetch won't send it unless asked to.
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

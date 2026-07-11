@@ -311,6 +311,19 @@ not node-redis, so without this flag it silently uses the wrong command-dispatch
 currently referenced by `DATABASE_URL`), `redis` (port 6379), and `jaeger` (OTLP on 4317, UI on
 16686 — tracing is not yet wired into the app code).
 
+**Prisma Studio (DB admin GUI)**: `prisma-studio` service, gated behind the `admin` Compose
+profile — it does **not** start on a bare `docker compose up -d`. Start on demand:
+`docker compose --profile admin up -d prisma-studio`; stop it when done:
+`docker compose --profile admin down prisma-studio`. Prisma Studio has **no built-in
+authentication** — its port is bound to `127.0.0.1:5555` only (not `0.0.0.0`, unlike every other
+service's ports in this file), so the SSH tunnel is the entire auth boundary: anyone who can SSH
+to the host gets full unrestricted DB read/write through it. Requires `DATABASE_URL` set in the
+root `.env` first — the container exits immediately with a clear error if it's unset (checked at
+container start, not at `docker compose config` time, so a missing `DATABASE_URL` never breaks
+the base `docker compose up -d` for everyone else). Remote access: `ssh -L
+5555:localhost:5555 user@server`, then browse `http://localhost:5555` locally; close the tunnel
+and tear the container down again once finished.
+
 ## Conventions
 
 - Code comments and some error messages are written in Polish; match the existing style within a

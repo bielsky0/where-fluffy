@@ -150,6 +150,47 @@ services:
     networks:
       - fluffy-net
 
+  # Prisma Studio — on-demand DB admin GUI, NOT started by a bare `docker compose up -d`.
+  # No built-in auth: loopback-only port binding + an SSH tunnel is the entire auth boundary.
+  # Start:  docker compose --profile admin up -d prisma-studio
+  # Stop:   docker compose --profile admin down prisma-studio
+  prisma-studio:
+    build:
+      context: ./src
+      target: builder   # builder stage has the `prisma` CLI (devDependency), generated client,
+                         # schema.prisma, and openssl; `runtime` strips devDependencies and has
+                         # no `prisma` binary to run `prisma studio` with.
+    # Compose interpolates every service's `environment:` block at config-parse time regardless
+    # of profiles — a `${DATABASE_URL:?...}` here would break the base `docker compose up -d`
+    # for everyone, even though this service itself is profile-gated. So the file-level default
+    # is empty, and the required-var check instead runs inside the container at start time, only
+    # when someone actually brings this service up via --profile admin.
+    command: >
+      sh -c '
+        if [ -z "$$DATABASE_URL" ]; then
+          echo "DATABASE_URL is required to start prisma-studio — set it in the root .env" >&2;
+          exit 1;
+        fi;
+        exec npx prisma studio --hostname 0.0.0.0 --port 5555
+      '
+    environment:
+      # No file-level default — set the real value in the root .env (gitignored):
+      #   local testing: DATABASE_URL="postgresql://user:password@db:5432/fluffy_db"
+      #   real prod use: the deployment host's own real DB URL — never hardcode/commit it here.
+      DATABASE_URL: "${DATABASE_URL:-}"
+      # Disables Prisma's telemetry/update-check ping on every `studio` invocation — this may
+      # run against a production host.
+      CHECKPOINT_DISABLE: "1"
+    ports:
+      # Loopback-only — unlike every other service's ports in this file (all bare "host:container",
+      # which Docker publishes to 0.0.0.0). Only reachable from the Docker host itself; remote
+      # developers reach it via an SSH tunnel.
+      - "127.0.0.1:5555:5555"
+    profiles:
+      - admin
+    networks:
+      - fluffy-net
+
   # ---------------------------------------------------------------------------
   # Observability (LGTM + Alloy). Alloy is the single collector every signal
   # flows through: OTLP traces/metrics from the app land on 4317/4318, Docker

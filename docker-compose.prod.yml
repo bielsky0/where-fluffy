@@ -1,0 +1,129 @@
+# Production overlay — NOT a standalone file, always combined with the base docker-compose.yml:
+#
+#   docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# The base file is the local/all-in-one dev stack (hardcoded db creds, Grafana admin/admin,
+# every service's port published on 0.0.0.0) — fine on a laptop, not fine on a public host. This
+# overlay: (1) replaces every hardcoded credential with a required env var that fails the
+# `docker compose` invocation itself if unset, via `${VAR:?...}`; (2) unpublishes every internal
+# service's host port (`ports: !override [...]`, Compose's list-replace merge tag — a plain
+# `ports: []` here would NOT work, Compose's default list merge for `ports` *appends* rather than
+# replaces, so the base file's insecure 0.0.0.0 bindings would otherwise survive untouched
+# alongside whatever this file adds); (3) adds a `proxy` (Caddy) service as the only container
+# reachable from outside — see infra/caddy/Caddyfile — terminating TLS and fanning out to `api`/
+# `web` over the internal `fluffy-net` network, and a `web` service (see web/Dockerfile) serving
+# the built frontend, neither of which exist in the dev-only base file.
+#
+# Required vars (put these in .env.production, gitignored, never in this file):
+#   DOMAIN, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, JWT_SECRET, FRONTEND_URL
+#   (https://<DOMAIN>), BACKEND_PUBLIC_URL (https://<DOMAIN>), GF_SECURITY_ADMIN_PASSWORD,
+#   RESEND_API_KEY, GOOGLE_CLIENT_ID/SECRET, FACEBOOK_APP_ID/SECRET — whichever of the last two
+#   OAuth pairs you actually enable.
+
+services:
+  db:
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER must be set}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB must be set}"
+    ports: !override []
+
+  pgbouncer:
+    environment:
+      DB_USER: "${POSTGRES_USER:?POSTGRES_USER must be set}"
+      DB_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      DB_NAME: "${POSTGRES_DB:?POSTGRES_DB must be set}"
+    ports: !override []
+
+  redis:
+    ports: !override []
+
+  api:
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:?POSTGRES_DB must be set}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a real, non-default secret}"
+      FRONTEND_URL: "${FRONTEND_URL:?FRONTEND_URL must be set, e.g. https://example.com}"
+      BACKEND_PUBLIC_URL: "${BACKEND_PUBLIC_URL:?BACKEND_PUBLIC_URL must be set, e.g. https://example.com}"
+      # Dev-only escape hatch (see docker-compose.yml's api service) — must NOT be set in
+      # production, or oauth.config.ts's https:// requirement on FRONTEND_URL is silently bypassed.
+      ALLOW_INSECURE_ORIGIN: "false"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      FACEBOOK_APP_ID: "${FACEBOOK_APP_ID:-}"
+      FACEBOOK_APP_SECRET: "${FACEBOOK_APP_SECRET:-}"
+    # Not published to the host at all — only `proxy` (Caddy) and other containers on
+    # `fluffy-net` reach this, via the internal DNS name `api`, never a host port.
+    ports: !override []
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      alloy:
+        condition: service_started
+
+  ai-worker:
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER must be set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:?POSTGRES_DB must be set}"
+
+  # Static frontend (see web/Dockerfile: Vite build -> nginx serving web/dist). Not reachable
+  # directly — only `proxy` routes to it, over `fluffy-net`, via the internal DNS name `web`.
+  web:
+    build:
+      context: ./web
+    restart: unless-stopped
+    networks:
+      - fluffy-net
+
+  # Single public entrypoint — see infra/caddy/Caddyfile for the TLS + path-routing config.
+  # Requires DOMAIN's DNS A/AAAA record to already point at this host before startup, or
+  # Caddy's automatic Let's Encrypt issuance will fail.
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: "${DOMAIN:?DOMAIN must be set, e.g. example.com}"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+      - web
+    networks:
+      - fluffy-net
+
+  # Ops-only dashboard — loopback-bound rather than unpublished entirely (unlike db/redis/etc.
+  # above), same reasoning as prisma-studio's existing pattern: reachable only via an SSH tunnel
+  # to this host, never directly from the public internet.
+  grafana:
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GF_SECURITY_ADMIN_USER:?GF_SECURITY_ADMIN_USER must be set}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GF_SECURITY_ADMIN_PASSWORD:?GF_SECURITY_ADMIN_PASSWORD must be set}"
+    ports: !override
+      - "127.0.0.1:3001:3000"
+
+  prometheus:
+    ports: !override []
+
+  loki:
+    ports: !override []
+
+  tempo:
+    ports: !override []
+
+  alloy:
+    ports: !override []
+
+volumes:
+  caddy-data:
+  caddy-config:

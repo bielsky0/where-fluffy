@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import cookieParser from 'cookie-parser';
 import apiRouter from './app.routes.js'; // <-- Import agregatora
@@ -7,6 +8,7 @@ import { errorHandler } from './shared/middleware/error.middleware.js';
 import { createRateLimiterMiddleware } from './shared/rate-limit/rate-limiter.middleware.js';
 import { redisClient } from './shared/infrastructure/redis.js';
 import { logger } from './shared/infrastructure/logger.js';
+import { oauthConfig } from './shared/config/oauth.config.js';
 
 export const createApp = () => {
   const app = express();
@@ -16,9 +18,13 @@ export const createApp = () => {
   // and manual application logs, not just one or the other.
   app.use(pinoHttp({ logger }));
 
+  // Domyślne nagłówki bezpieczeństwa (CSP, X-Frame-Options, HSTS, itd.) — bez tego appka nie
+  // miała żadnej ochrony poza tym, co niejawnie dają same `secure`/`httpOnly` na cookie sesji.
+  app.use(helmet());
+
   // Konfiguracja CORS z obsługą ciasteczek (ważne dla JWT w cookies!)
   app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: oauthConfig.frontendUrl,
     credentials: true
   }));
 

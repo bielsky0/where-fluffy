@@ -29,7 +29,7 @@ export const authenticate = (req: AuthenticatedRequest, res: Response, next: Nex
     }
 
     // Weryfikacja poprawności tokenu
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; name: string };
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { id: string; email: string; name: string };
     
     // Wstrzykujemy dane użytkownika do obiektu żądania
     req.user = {

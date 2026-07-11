@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      - run: npm ci
+
+      # Authoritative type-check gate — jest specs are transpiled by ts-jest in isolated mode
+      # and don't type-check the app on their own (see CLAUDE.md).
+      - run: npx tsc --noEmit
+
+      - run: npm run test:unit
+
+      # testcontainers spins up real postgis/postgis:16-3.4 containers — needs the Docker
+      # daemon already present on GitHub's ubuntu-latest runners, no extra setup required.
+      - run: npm run test:integration
+
+      - run: npm run build
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run build

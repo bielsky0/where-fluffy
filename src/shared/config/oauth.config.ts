@@ -13,7 +13,21 @@ import { z } from 'zod';
 // it's the fallback of last resort and should stay reachable even with both providers disabled.
 const oauthEnvSchema = z.object({
   BACKEND_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
-  FRONTEND_URL: z.string().url().default('http://localhost:3000'),
+  // Single source of truth for the frontend origin — app.ts's CORS, socket.ts's Socket.io CORS,
+  // and seo/index.ts's sitemap base URL all import oauthConfig.frontendUrl instead of each
+  // independently reading process.env.FRONTEND_URL with their own fallback (same class of drift
+  // JWT_SECRET used to have, see auth.config.ts).
+  FRONTEND_URL: z
+    .string()
+    .url()
+    .default('http://localhost:3000')
+    .refine(
+      (url) =>
+        process.env.NODE_ENV !== 'production' ||
+        process.env.ALLOW_INSECURE_ORIGIN === 'true' ||
+        url.startsWith('https://'),
+      { message: 'FRONTEND_URL must be an https:// URL in production (set ALLOW_INSECURE_ORIGIN=true to override deliberately)' },
+    ),
   GOOGLE_CLIENT_ID: z.string().default(''),
   GOOGLE_CLIENT_SECRET: z.string().default(''),
   GOOGLE_OAUTH_ENABLED: z

@@ -51,10 +51,10 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy:4317"
       NODE_ENV: production
       PORT: "3000"
-      # Same value as auth.middleware.ts / socket.ts's hardcoded fallback — set here explicitly
-      # so it's visible as something to replace with a real secret (env/secrets manager) before
-      # this ever runs anywhere but a laptop.
-      JWT_SECRET: "super-secret-key-change-me"
+      # No file-level default on purpose: auth.config.ts now refuses to start with NODE_ENV=production
+      # if this equals the old hardcoded fallback (or is unset) — so this must come from the root
+      # .env (gitignored) for local use, and from a real secret store for anything beyond a laptop.
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set in the root .env}"
       # All have matching Zod defaults in shared/config/location.config.ts (same Warsaw
       # coordinates) — set explicitly here for parity/visibility, not because they differ.
       FALLBACK_LOCATION_LAT: "52.2297"
@@ -65,6 +65,11 @@ services:
       # before this container needs to serve a real login flow. See src/.env.example and
       # shared/config/oauth.config.ts for what each does, including the per-provider kill switch.
       FRONTEND_URL: "http://localhost:5173"
+      # This stack sets NODE_ENV=production above but still runs on a laptop with a plain-http
+      # Vite dev server as its frontend — oauth.config.ts's FRONTEND_URL validator would otherwise
+      # refuse to start, since it requires https:// whenever NODE_ENV=production. A real production
+      # deploy should NOT set this (see docker-compose.prod.yml).
+      ALLOW_INSECURE_ORIGIN: "true"
       BACKEND_PUBLIC_URL: "http://localhost:3000"
       GOOGLE_CLIENT_ID: ""
       GOOGLE_CLIENT_SECRET: ""

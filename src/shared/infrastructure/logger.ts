@@ -12,6 +12,19 @@ const isProduction = process.env.NODE_ENV === 'production';
 export const createLogger = (destination?: pino.DestinationStream): pino.Logger => {
   const options: pino.LoggerOptions = {
     level: process.env.LOG_LEVEL ?? 'info',
+    // pino-http's default req/res serializers otherwise log these verbatim — the cookie header
+    // carries the raw JWT, so without this every request log line would leak a valid session
+    // token in plaintext.
+    redact: {
+      paths: [
+        'req.headers.cookie',
+        'req.headers.authorization',
+        'req.body.password',
+        'req.body.token',
+        'res.headers["set-cookie"]',
+      ],
+      censor: '[REDACTED]',
+    },
     // `mixin()` runs on every single log call (not just once at logger creation), so it always
     // reads whichever span is active *at that call site* — this is what makes trace/span
     // correlation automatic: callers never have to thread a trace id through manually (see

@@ -1,0 +1,18 @@
+# Single public entrypoint for the whole prod stack — terminates TLS (Caddy issues/renews a
+# Let's Encrypt cert automatically for {$DOMAIN}, requires DNS for that domain to already point
+# at this host) and fans out by path: WS/API traffic to `api`, everything else to the `web`
+# static SPA container. Neither `api` nor `web` publish their own ports in prod (see
+# docker-compose.prod.yml) — this is the only container reaching the outside world.
+{$DOMAIN} {
+	handle /api/v1/* {
+		reverse_proxy api:3000
+	}
+
+	handle /socket.io/* {
+		reverse_proxy api:3000
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+}

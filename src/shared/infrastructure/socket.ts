@@ -10,6 +10,7 @@ import type { RedisClientType } from 'redis';
 import type { ChatIoServer } from '../../modules/chat/interface/chat.interface.js';
 import { createSocketConnectionRateLimiter } from '../rate-limit/rate-limiter.socket.js';
 import { JWT_SECRET } from '../config/auth.config.js';
+import { oauthConfig } from '../config/oauth.config.js';
 
 let io: ChatIoServer;
 
@@ -24,7 +25,7 @@ export const initSocket = (
 ): ChatIoServer => {
 
   io = new Server(httpServer, {
-    cors: { origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true },
+    cors: { origin: oauthConfig.frontendUrl, credentials: true },
     adapter: createAdapter(pubClient, subClient), // Wpinamy adapter
   });
 
@@ -46,7 +47,7 @@ export const initSocket = (
       
       const token = parseCookie(cookiesHeader).token;
       if (!token) throw new Error('Token missing');
-      const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email?: string; name?: string };
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { id: string; email?: string; name?: string };
       // Zachowujemy pełne dane użytkownika oraz skrócone userId dla kompatybilności
       socket.data.user = {
         id: decoded.id,

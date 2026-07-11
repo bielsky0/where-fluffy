@@ -7,9 +7,11 @@ import mapRoutes from './modules/map/map.routes.js';
 import seoRoutes from './modules/seo/seo.routes.js';
 import geocodeRoutes from './modules/geocode/geocode.routes.js';
 import searchRoutes from './modules/search/search.routes.js';
+import healthRoutes from './modules/health/health.routes.js';
 
 const apiRouter = Router();
 
+apiRouter.use('/health', healthRoutes);
 apiRouter.use('/auth', authRoutes);
 apiRouter.use('/pets', petsRoutes);
 apiRouter.use('/chats', chatRoutes); // Endpointy będą dostępne pod /chats

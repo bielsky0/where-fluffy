@@ -37,6 +37,10 @@ describe('createEmbedPetDataProcessor', () => {
       save: jest.fn(),
       findNearLocation: jest.fn(),
       updateEmbedding: jest.fn(),
+      findByOwnerId: jest.fn(),
+      update: jest.fn(),
+      updateStatus: jest.fn(),
+      deleteById: jest.fn(),
     };
     mockEmbeddingProvider = { generateEmbedding: jest.fn() };
     logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown as Logger;

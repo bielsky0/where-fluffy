@@ -1,46 +1,9 @@
-import type { ArchivedListing, ProfileListing } from '../types/profile.types';
-
-// Everything in this file is a placeholder standing in for a real "my profile" endpoint that
-// doesn't exist yet: PetResponseDTO carries no `ownerId` back to the client (see pet.types.ts),
-// and there is no `GET /users/me/pets` or `/users/me/stats` route anywhere in pets.routes.ts or
-// auth.routes.ts. Same "don't fake a capability we don't have, but still render a believable
-// screen" stance already taken by MOCK_REPORTER_NAME (PetDetailPage.tsx) and
-// MOCK_RECENT_SEARCHES (SearchModal.tsx) — once a real endpoint exists, ProfilePage.tsx should
-// fetch through a TanStack Query hook instead of importing these constants directly.
-
-export const INITIAL_ACTIVE_LISTINGS: ProfileListing[] = [
-  {
-    id: 'listing-1',
-    kind: 'missing',
-    petName: 'Oreo',
-    speciesLabel: 'Kot',
-    createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
-    location: { lat: 52.2297, lng: 21.0122 },
-  },
-  {
-    id: 'listing-2',
-    kind: 'sighting',
-    petName: null,
-    speciesLabel: 'Pies w typie Beagle',
-    createdAt: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
-    location: { lat: 52.2405, lng: 21.0234 },
-  },
-  {
-    id: 'listing-3',
-    kind: 'missing',
-    petName: 'Fiona',
-    speciesLabel: 'Papuga',
-    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    location: { lat: 52.2189, lng: 20.9967 },
-  },
-];
-
-export const ARCHIVED_LISTINGS: ArchivedListing[] = [
-  { id: 'archive-1', speciesLabel: 'Pies' },
-  { id: 'archive-2', speciesLabel: 'Kot' },
-  { id: 'archive-3', speciesLabel: 'Kot' },
-  { id: 'archive-4', speciesLabel: 'Królik' },
-];
+// GET /pets/mine (pets.controller.ts's listMine) now backs the active/archived listing feeds —
+// see useMyPets.ts/mapPetToListing.ts. What's left here is genuinely still unbacked by any
+// endpoint: User has no createdAt field (auth.types.ts) and nothing tracks a "pets helped" count
+// anywhere server-side. Same "don't fake a capability we don't have, but still render a
+// believable screen" stance already taken by MOCK_REPORTER_NAME (PetDetailPage.tsx) and
+// MOCK_RECENT_SEARCHES (SearchModal.tsx).
 
 // Seed value for the "Pomogłeś" stat — increments locally each time a listing is marked
 // "Odnaleziony" (see ProfilePage.tsx's handleResolve). Nothing on the backend tracks this today.

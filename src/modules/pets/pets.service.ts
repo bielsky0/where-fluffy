@@ -1,6 +1,7 @@
 import { CreatePetDTO } from './dto/create-pet.dto.js';
 import { PetResponseDTO } from './dto/pet-response.dto.js';
-import { PetRepository } from './interfaces/pets.interface.js';
+import { UpdatePetDTO } from './dto/update-pet.dto.js';
+import { IPet, PetRepository } from './interfaces/pets.interface.js';
 import { mapToResponseDTO } from './pets.mapper.js';
 import { categorizePetSpecies } from './pets.category.js';
 import { PhotoService } from '../../shared/photo/photo.service.js';
@@ -13,7 +14,17 @@ export type PetsService = {
   reportMissingPet: (dto: CreatePetDTO) => Promise<PetResponseDTO>;
   getPetsNearby: (lat: number, lng: number, radius?: number) => Promise<PetResponseDTO[]>;
   getPetById: (id: string) => Promise<PetResponseDTO>;
+  getPetsByOwner: (ownerId: string) => Promise<PetResponseDTO[]>;
+  updatePet: (petId: string, requesterId: string, dto: UpdatePetDTO) => Promise<PetResponseDTO>;
+  updatePetStatus: (petId: string, requesterId: string, status: IPet['status']) => Promise<PetResponseDTO>;
+  deletePet: (petId: string, requesterId: string) => Promise<void>;
 };
+
+// Pola, które faktycznie wpływają na tekst embeddingu (patrz ai-worker/embed-pet-data.processor.ts
+// — konkatenuje name/species/category/distinguishingMarks). `category` podąża za `species`, więc
+// zmiana samego species też wymaga re-enqueue. reward/phone/email/photos/city są dla embeddingu
+// nieistotne.
+const EMBEDDING_RELEVANT_FIELDS = ['name', 'species', 'distinguishingMarks'] as const;
 
 export const createPetsService = (
   petRepository: PetRepository,
@@ -56,5 +67,91 @@ export const createPetsService = (
     return mapToResponseDTO(pet);
   };
 
-  return { reportMissingPet, getPetsNearby, getPetById };
+  const getPetsByOwner = async (ownerId: string): Promise<PetResponseDTO[]> => {
+    const pets = await petRepository.findByOwnerId(ownerId);
+    return pets.map(mapToResponseDTO);
+  };
+
+  const assertOwnership = async (petId: string, requesterId: string): Promise<IPet> => {
+    const pet = await petRepository.findById(petId);
+    if (!pet) throw createAppError(404, 'Zgłoszenie zwierzaka nie istnieje');
+    if (pet.ownerId !== requesterId) {
+      throw createAppError(403, 'Nie masz uprawnień do edycji tego zgłoszenia');
+    }
+    return pet;
+  };
+
+  const updatePet = async (petId: string, requesterId: string, dto: UpdatePetDTO): Promise<PetResponseDTO> => {
+    const pet = await assertOwnership(petId, requesterId);
+
+    // species może się zmienić przy edycji — category musi za nim podążyć (przy tworzeniu liczona
+    // jest tylko raz, patrz reportMissingPet).
+    const category = dto.species !== undefined ? categorizePetSpecies(dto.species) : undefined;
+
+    // Diffing zdjęć: wpisy już obecne w pet.photoUrls są używane bez zmian (pomijają
+    // photoService.store), nowe wpisy przechodzą przez store() — dziś to no-op echo (patrz
+    // photo.service.ts), ale zachowuje szew pod przyszły prawdziwy upload. Kolejność, w jakiej
+    // klient wysłał tablicę, staje się nową kolejnością — to właśnie zapisuje reorder zdjęć,
+    // bez osobnego endpointu.
+    let photoUrls: string[] | undefined;
+    let photoUrl: string | undefined;
+    if (dto.photoBase64s !== undefined) {
+      photoUrls = await Promise.all(
+        dto.photoBase64s.map((entry) => (pet.photoUrls.includes(entry) ? entry : photoService.store(entry))),
+      );
+      photoUrl = photoUrls[0];
+    }
+
+    const updated = await petRepository.update(petId, {
+      ...(dto.name !== undefined && { name: dto.name }),
+      ...(dto.species !== undefined && { species: dto.species }),
+      ...(category !== undefined && { category }),
+      ...(dto.reward !== undefined && { reward: dto.reward }),
+      ...(dto.phone !== undefined && { phone: dto.phone }),
+      ...(dto.email !== undefined && { email: dto.email }),
+      ...(dto.distinguishingMarks !== undefined && { distinguishingMarks: dto.distinguishingMarks }),
+      ...(dto.location !== undefined && { location: dto.location }),
+      ...(photoUrls !== undefined && { photoUrls, photoUrl }),
+    });
+    if (!updated) throw createAppError(404, 'Zgłoszenie zwierzaka nie istnieje');
+
+    const embeddingRelevantChange = EMBEDDING_RELEVANT_FIELDS.some(
+      (field) => dto[field] !== undefined && dto[field] !== pet[field],
+    );
+    if (embeddingRelevantChange) {
+      try {
+        await petEmbeddingQueue.enqueueEmbedPetData(petId);
+      } catch (err) {
+        logger.error({ err, petId }, '[CRITICAL_AI_ERROR] failed to enqueue embedding job');
+      }
+    }
+
+    return mapToResponseDTO(updated);
+  };
+
+  const updatePetStatus = async (
+    petId: string,
+    requesterId: string,
+    status: IPet['status'],
+  ): Promise<PetResponseDTO> => {
+    await assertOwnership(petId, requesterId);
+    const updated = await petRepository.updateStatus(petId, status);
+    if (!updated) throw createAppError(404, 'Zgłoszenie zwierzaka nie istnieje');
+    return mapToResponseDTO(updated);
+  };
+
+  const deletePet = async (petId: string, requesterId: string): Promise<void> => {
+    await assertOwnership(petId, requesterId);
+    await petRepository.deleteById(petId);
+  };
+
+  return {
+    reportMissingPet,
+    getPetsNearby,
+    getPetById,
+    getPetsByOwner,
+    updatePet,
+    updatePetStatus,
+    deletePet,
+  };
 };

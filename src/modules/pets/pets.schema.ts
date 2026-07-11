@@ -34,4 +34,15 @@ export const createPetSchema = createPetBaseSchema
     path: ['phone'],
   });
 
-export const updatePetSchema = createPetBaseSchema.partial();
+// Edycja nigdy nie niesie `status` — zmiany statusu idą przez własny endpoint
+// (updatePetStatusSchema poniżej), żeby dyskretne akcje Management Hub (Edytuj / Oznacz jako
+// odnaleziony / Pauza) się nie mieszały.
+export const updatePetSchema = createPetBaseSchema.omit({ status: true }).partial();
+
+// 'paused'/'resolved' nie istnieją przy tworzeniu zgłoszenia (createPetSchema wyżej) — to stany,
+// w które zgłoszenie może wejść wyłącznie przez Management Hub. 'resolved' to nowy stan "odzyskany
+// właściciel" (Flow 4), celowo odrębny od 'found' — 'found' oznacza zgłoszenie widzenia przez
+// znalazcę (patrz PetDetailPage.tsx's STATUS_COPY), nie to samo co odnalezienie własnego zwierzaka.
+export const updatePetStatusSchema = z.object({
+  status: z.enum(['missing', 'found', 'paused', 'resolved']),
+});

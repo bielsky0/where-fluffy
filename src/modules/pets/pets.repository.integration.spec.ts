@@ -257,4 +257,106 @@ describe('createPetRepository (integration)', () => {
       expect(result).toBe('not_found');
     });
   });
+
+  describe('findByOwnerId', () => {
+    it('returns only the given owner\'s pets, newest first', async () => {
+      const otherOwner = await prisma.user.create({
+        data: { email: 'other-owner@fixture.test', password: 'irrelevant-hash', name: 'Other Owner' },
+      });
+      const older = await repository.save(buildCreateDto({ name: 'Older' }));
+      await new Promise((resolve) => setTimeout(resolve, 5)); // see CLAUDE.md's createdAt-ordering note
+      const newer = await repository.save(buildCreateDto({ name: 'Newer' }));
+      await repository.save(buildCreateDto({ name: 'Someone Else’s', ownerId: otherOwner.id }));
+
+      const results = await repository.findByOwnerId(owner.id);
+
+      expect(results.map((p) => p.id)).toEqual([newer.id, older.id]);
+    });
+
+    it('returns an empty array for an owner with no pets', async () => {
+      const results = await repository.findByOwnerId(randomUUID());
+
+      expect(results).toEqual([]);
+    });
+  });
+
+  describe('update', () => {
+    it('patches only the given columns, leaving the rest untouched', async () => {
+      const pet = await repository.save(buildCreateDto({ name: 'Rex', reward: 100 }));
+
+      const updated = await repository.update(pet.id, { name: 'Max' });
+
+      expect(updated?.name).toBe('Max');
+      expect(updated?.reward).toBe(100);
+      expect(updated?.species).toBe(pet.species);
+    });
+
+    it('updates location via ST_SetSRID/ST_MakePoint', async () => {
+      const pet = await repository.save(buildCreateDto({ location: CENTER }));
+
+      const updated = await repository.update(pet.id, { location: NEAR });
+
+      expect(updated?.location.lat).toBeCloseTo(NEAR.lat, 5);
+      expect(updated?.location.lng).toBeCloseTo(NEAR.lng, 5);
+    });
+
+    it('bumps updatedAt', async () => {
+      const pet = await repository.save(buildCreateDto());
+      await new Promise((resolve) => setTimeout(resolve, 5));
+
+      const updated = await repository.update(pet.id, { reward: 500 });
+
+      expect(updated!.updatedAt.getTime()).toBeGreaterThan(pet.updatedAt.getTime());
+    });
+
+    it('returns null for an id that does not exist', async () => {
+      const result = await repository.update(randomUUID(), { name: 'Ghost' });
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('updateStatus', () => {
+    it('transitions status and returns the updated pet', async () => {
+      const pet = await repository.save(buildCreateDto({ status: 'missing' }));
+
+      const updated = await repository.updateStatus(pet.id, 'resolved');
+
+      expect(updated?.status).toBe('resolved');
+    });
+
+    it('returns null for an id that does not exist', async () => {
+      const result = await repository.updateStatus(randomUUID(), 'paused');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('deleteById', () => {
+    it('deletes the pet and cascades to its comments and chat rooms', async () => {
+      const pet = await repository.save(buildCreateDto());
+      const finder = await prisma.user.create({
+        data: { email: 'finder@fixture.test', password: 'irrelevant-hash', name: 'Finder' },
+      });
+      const comment = await prisma.comment.create({
+        data: { message: 'Widziałem go', type: 'general', petId: pet.id, userId: owner.id },
+      });
+      const chatRoom = await prisma.chatRoom.create({
+        data: { petId: pet.id, ownerId: owner.id, finderId: finder.id },
+      });
+
+      const result = await repository.deleteById(pet.id);
+
+      expect(result).toBe('deleted');
+      expect(await repository.findById(pet.id)).toBeNull();
+      expect(await prisma.comment.findUnique({ where: { id: comment.id } })).toBeNull();
+      expect(await prisma.chatRoom.findUnique({ where: { id: chatRoom.id } })).toBeNull();
+    });
+
+    it('returns "not_found" for an id that does not exist, without throwing', async () => {
+      const result = await repository.deleteById(randomUUID());
+
+      expect(result).toBe('not_found');
+    });
+  });
 });

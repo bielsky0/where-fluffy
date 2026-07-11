@@ -3,7 +3,15 @@
 // once it's populated, both sides should import the DTO from there instead of hand-mirroring it.
 import type { PetTypeFilter } from '../lib/petType';
 
-export type PetStatus = 'missing' | 'found';
+// The two statuses public feed/map/nearby/search surfaces can ever return (server-side filtered
+// — feed.repository.ts / map.repository.ts) — use this, not the wider PetStatus below, for any
+// search-filter or map-pin type so 'paused'/'resolved' can't leak in as meaningless filter options.
+export type PublicPetStatus = 'missing' | 'found';
+
+// 'paused'/'resolved' additionally appear on: a pet the current user owns (Management Hub actions
+// — see web/src/modules/profile/), and GET /pets/:petId's detail response, which has no status
+// filter at all (a bookmarked link to a since-resolved/paused report still resolves).
+export type PetStatus = PublicPetStatus | 'paused' | 'resolved';
 
 export interface Pet {
   id: string;
@@ -13,6 +21,7 @@ export interface Pet {
   species: string;
   category: PetTypeFilter;
   status: PetStatus;
+  ownerId: string;
   reward: number;
   phone: string | null;
   email: string | null;

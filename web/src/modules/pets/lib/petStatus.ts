@@ -5,4 +5,8 @@ import type { PetStatus } from '../types/pet.types';
 export const PET_STATUS_LABEL: Record<PetStatus, string> = {
   missing: 'ZAGINĄŁ',
   found: 'WIDZIANY',
+  // 'paused'/'resolved' only ever reach a full Pet DTO via GET /pets/:petId (no status filter
+  // there — see pet.types.ts's PetStatus comment), never via MapPin (PublicPetStatus only).
+  paused: 'WSTRZYMANE',
+  resolved: 'ODNALEZIONY',
 };

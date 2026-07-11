@@ -5,6 +5,8 @@ import type { Pet, PetStatus } from '../../types/pet.types';
 const STATUS_ACCENT: Record<PetStatus, string> = {
   missing: '#dc2626',
   found: '#f97316',
+  paused: '#8E8E93',
+  resolved: '#22C55E',
 };
 
 interface LocationMapWidgetProps {

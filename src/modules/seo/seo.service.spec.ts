@@ -8,6 +8,7 @@ const buildPetResponse = (overrides: Partial<PetResponseDTO> = {}): PetResponseD
   species: 'pies',
   category: 'dog',
   status: 'missing',
+  ownerId: 'owner-1',
   reward: 0,
   phone: null,
   email: null,
@@ -28,6 +29,10 @@ describe('createSeoService', () => {
       reportMissingPet: jest.fn(),
       getPetsNearby: jest.fn(),
       getPetById: jest.fn(),
+      getPetsByOwner: jest.fn(),
+      updatePet: jest.fn(),
+      updatePetStatus: jest.fn(),
+      deletePet: jest.fn(),
     };
   });
 

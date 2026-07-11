@@ -8,7 +8,7 @@ import { useAppLocation } from '@/modules/location/api/useAppLocation';
 import type { GeocodeResult } from '@/modules/geocode/types/geocode.types';
 import { PET_TYPE_LABELS, type PetTypeFilter } from '@/modules/pets/lib/petType';
 import { TIMEFRAME_LABELS, type TimeframeFilter } from '@/modules/pets/lib/timeframe';
-import type { PetStatus } from '@/modules/pets/types/pet.types';
+import type { PublicPetStatus } from '@/modules/pets/types/pet.types';
 import { useAppUIStore } from '../store/useAppUIStore';
 
 // Same spring across the header's sliding underline and the footer's keyboard-avoidance slide —
@@ -37,7 +37,7 @@ const MIN_LOCATION_QUERY_LENGTH = 2;
 
 const TIMEFRAME_OPTIONS = Object.keys(TIMEFRAME_LABELS) as TimeframeFilter[];
 
-type StatusOption = PetStatus | 'both';
+type StatusOption = PublicPetStatus | 'both';
 const STATUS_OPTIONS: StatusOption[] = ['missing', 'both', 'found'];
 const STATUS_LABELS: Record<StatusOption, string> = {
   missing: 'Zaginione',

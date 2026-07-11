@@ -6,6 +6,8 @@ import { getPetDisplayInitial, getPetDisplayName } from '../../lib/format';
 const STATUS_HEADLINE: Record<PetStatus, string> = {
   missing: 'ZAGINĄŁ',
   found: 'WIDZIANY',
+  paused: 'WSTRZYMANE',
+  resolved: 'ODNALEZIONY',
 };
 
 interface StoryModeOverlayProps {

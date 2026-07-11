@@ -49,6 +49,10 @@ describe('createPetsService', () => {
       save: jest.fn(),
       findNearLocation: jest.fn(),
       updateEmbedding: jest.fn(),
+      findByOwnerId: jest.fn(),
+      update: jest.fn(),
+      updateStatus: jest.fn(),
+      deleteById: jest.fn(),
     };
     mockPhotoService = {
       store: jest.fn(),
@@ -137,6 +141,7 @@ describe('createPetsService', () => {
         species: savedPet.species,
         category: savedPet.category,
         status: savedPet.status,
+        ownerId: savedPet.ownerId,
         reward: 250,
         phone: savedPet.phone,
         email: savedPet.email,
@@ -223,6 +228,7 @@ describe('createPetsService', () => {
           species: nearbyPet.species,
           category: nearbyPet.category,
           status: nearbyPet.status,
+          ownerId: nearbyPet.ownerId,
           reward: nearbyPet.reward,
           phone: nearbyPet.phone,
           email: nearbyPet.email,
@@ -282,6 +288,147 @@ describe('createPetsService', () => {
         statusCode: 404,
         message: 'Zgłoszenie zwierzaka nie istnieje',
       });
+    });
+  });
+
+  describe('getPetsByOwner', () => {
+    it('passes ownerId through to repository.findByOwnerId and maps the results', async () => {
+      const pet = buildPet({ id: 'pet-3', ownerId: 'owner-9' });
+      mockRepository.findByOwnerId.mockResolvedValue([pet]);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      const result = await service.getPetsByOwner('owner-9');
+
+      expect(mockRepository.findByOwnerId).toHaveBeenCalledWith('owner-9');
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('pet-3');
+    });
+  });
+
+  describe('updatePet', () => {
+    it('throws 404 when the pet does not exist', async () => {
+      mockRepository.findById.mockResolvedValue(null);
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await expect(service.updatePet('missing-id', 'owner-1', {})).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('throws 403 when the requester is not the owner', async () => {
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1' }));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await expect(service.updatePet('pet-1', 'someone-else', { name: 'X' })).rejects.toMatchObject({
+        statusCode: 403,
+      });
+      expect(mockRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('recomputes category when species changes', async () => {
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1', species: 'dog', category: 'dog' }));
+      mockRepository.update.mockResolvedValue(buildPet({ species: 'Kot europejski', category: 'cat' }));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await service.updatePet('pet-1', 'owner-1', { species: 'Kot europejski' });
+
+      expect(mockRepository.update).toHaveBeenCalledWith(
+        'pet-1',
+        expect.objectContaining({ species: 'Kot europejski', category: 'cat' }),
+      );
+    });
+
+    it('reuses already-stored photo URLs and only stores genuinely new ones, preserving client order', async () => {
+      mockRepository.findById.mockResolvedValue(
+        buildPet({ ownerId: 'owner-1', photoUrls: ['existing-a', 'existing-b'] }),
+      );
+      mockPhotoService.store.mockResolvedValue('stored-new');
+      mockRepository.update.mockResolvedValue(buildPet());
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await service.updatePet('pet-1', 'owner-1', { photoBase64s: ['existing-b', 'existing-a', 'brand-new'] });
+
+      expect(mockPhotoService.store).toHaveBeenCalledTimes(1);
+      expect(mockPhotoService.store).toHaveBeenCalledWith('brand-new');
+      expect(mockRepository.update).toHaveBeenCalledWith(
+        'pet-1',
+        expect.objectContaining({
+          photoUrls: ['existing-b', 'existing-a', 'stored-new'],
+          photoUrl: 'existing-b',
+        }),
+      );
+    });
+
+    it('re-enqueues the embedding job when name changes', async () => {
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1', name: 'Rex' }));
+      mockRepository.update.mockResolvedValue(buildPet({ name: 'Max' }));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await service.updatePet('pet-1', 'owner-1', { name: 'Max' });
+
+      expect(mockPetEmbeddingQueue.enqueueEmbedPetData).toHaveBeenCalledWith('pet-1');
+    });
+
+    it('does not re-enqueue the embedding job for embedding-irrelevant changes only', async () => {
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1', reward: 100 }));
+      mockRepository.update.mockResolvedValue(buildPet({ reward: 500 }));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await service.updatePet('pet-1', 'owner-1', { reward: 500 });
+
+      expect(mockPetEmbeddingQueue.enqueueEmbedPetData).not.toHaveBeenCalled();
+    });
+
+    it('does not fail the request when the embedding re-enqueue throws', async () => {
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1', name: 'Rex' }));
+      mockRepository.update.mockResolvedValue(buildPet({ name: 'Max' }));
+      mockPetEmbeddingQueue.enqueueEmbedPetData.mockRejectedValue(new Error('redis unavailable'));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await expect(service.updatePet('pet-1', 'owner-1', { name: 'Max' })).resolves.toBeDefined();
+    });
+  });
+
+  describe('updatePetStatus', () => {
+    it('throws 403 when the requester is not the owner', async () => {
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1' }));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await expect(service.updatePetStatus('pet-1', 'someone-else', 'resolved')).rejects.toMatchObject({
+        statusCode: 403,
+      });
+      expect(mockRepository.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it.each(['missing', 'found', 'paused', 'resolved'] as const)(
+      'passes status %s through to repository.updateStatus for the owner',
+      async (status) => {
+        mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1' }));
+        mockRepository.updateStatus.mockResolvedValue(buildPet({ status }));
+        const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+        const result = await service.updatePetStatus('pet-1', 'owner-1', status);
+
+        expect(mockRepository.updateStatus).toHaveBeenCalledWith('pet-1', status);
+        expect(result.status).toBe(status);
+      },
+    );
+  });
+
+  describe('deletePet', () => {
+    it('throws 403 when the requester is not the owner', async () => {
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1' }));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await expect(service.deletePet('pet-1', 'someone-else')).rejects.toMatchObject({ statusCode: 403 });
+      expect(mockRepository.deleteById).not.toHaveBeenCalled();
+    });
+
+    it('deletes the pet for its owner', async () => {
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1' }));
+      const service = createPetsService(mockRepository, mockPhotoService, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await service.deletePet('pet-1', 'owner-1');
+
+      expect(mockRepository.deleteById).toHaveBeenCalledWith('pet-1');
     });
   });
 });

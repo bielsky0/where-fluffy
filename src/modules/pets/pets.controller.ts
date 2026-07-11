@@ -1,12 +1,23 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js';
 import { CreatePetDTO } from './dto/create-pet.dto.js';
+import { UpdatePetDTO } from './dto/update-pet.dto.js';
+import { IPet } from './interfaces/pets.interface.js';
 import { PetsService } from './pets.service.js';
 
 export type PetsController = {
   create: (req: AuthenticatedRequest, res: Response) => Promise<void>;
   listNearby: (req: AuthenticatedRequest, res: Response) => Promise<void>;
   getById: (req: AuthenticatedRequest, res: Response) => Promise<void>;
+  listMine: (req: AuthenticatedRequest, res: Response) => Promise<void>;
+  update: (req: AuthenticatedRequest, res: Response) => Promise<void>;
+  updateStatus: (req: AuthenticatedRequest, res: Response) => Promise<void>;
+  remove: (req: AuthenticatedRequest, res: Response) => Promise<void>;
+};
+
+const extractPetId = (req: AuthenticatedRequest): string => {
+  const rawPetId = req.params.petId;
+  return Array.isArray(rawPetId) ? rawPetId[0] : rawPetId;
 };
 
 export const createPetsController = (petsService: PetsService): PetsController => {
@@ -40,11 +51,37 @@ export const createPetsController = (petsService: PetsService): PetsController =
 
   // Publiczna trasa — oglądanie szczegółów zgłoszenia nie wymaga sesji.
   const getById = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const rawPetId = req.params.petId;
-    const petId = Array.isArray(rawPetId) ? rawPetId[0] : rawPetId;
+    const petId = extractPetId(req);
     const result = await petsService.getPetById(petId);
     res.status(200).json(result);
   };
 
-  return { create, listNearby, getById };
+  // PRYWATNE: własne zgłoszenia zalogowanego użytkownika ("Moje zgłoszenia" — patrz
+  // web/src/modules/profile/pages/ProfilePage.tsx).
+  const listMine = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const result = await petsService.getPetsByOwner(req.user!.id);
+    res.status(200).json(result);
+  };
+
+  // req.body jest już zwalidowany przez validate(updatePetSchema) — nigdy nie niesie `status`.
+  const update = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const petId = extractPetId(req);
+    const result = await petsService.updatePet(petId, req.user!.id, req.body as UpdatePetDTO);
+    res.status(200).json(result);
+  };
+
+  const updateStatus = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const petId = extractPetId(req);
+    const { status } = req.body as { status: IPet['status'] };
+    const result = await petsService.updatePetStatus(petId, req.user!.id, status);
+    res.status(200).json(result);
+  };
+
+  const remove = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const petId = extractPetId(req);
+    await petsService.deletePet(petId, req.user!.id);
+    res.status(204).send();
+  };
+
+  return { create, listNearby, getById, listMine, update, updateStatus, remove };
 };

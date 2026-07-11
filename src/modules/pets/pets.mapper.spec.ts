@@ -48,13 +48,16 @@ describe('mapToDomain', () => {
     });
   });
 
-  it('preserves a "found" status rather than hardcoding it', () => {
-    const row = buildRawRow({ status: 'found' });
+  it.each(['found', 'paused', 'resolved'] as const)(
+    'preserves a "%s" status rather than hardcoding it',
+    (status) => {
+      const row = buildRawRow({ status });
 
-    const pet = mapToDomain(row);
+      const pet = mapToDomain(row);
 
-    expect(pet.status).toBe('found');
-  });
+      expect(pet.status).toBe(status);
+    },
+  );
 
   it('coerces a numeric-string reward (as $queryRaw can return for numeric columns) into a real number', () => {
     const row = buildRawRow({ reward: '150' as unknown as number });
@@ -125,12 +128,12 @@ describe('mapToResponseDTO', () => {
     expect(dto.location).toEqual({ lat: 52.5, lng: 21.5 });
   });
 
-  it('does not leak ownerId or updatedAt into the response DTO', () => {
-    const pet = buildPet();
+  it('includes ownerId (needed by the frontend to gate management actions) but not updatedAt', () => {
+    const pet = buildPet({ ownerId: 'owner-7' });
 
     const dto = mapToResponseDTO(pet);
 
-    expect(dto).not.toHaveProperty('ownerId');
+    expect(dto.ownerId).toBe('owner-7');
     expect(dto).not.toHaveProperty('updatedAt');
   });
 
@@ -163,6 +166,7 @@ describe('mapToResponseDTO', () => {
       species: 'cat',
       status: 'missing',
       category: 'cat',
+      ownerId: 'owner-42',
       reward: 50,
       phone: null,
       email: null,

@@ -16,10 +16,13 @@ export const createMapRepository = (prisma: PrismaClient): MapRepository => {
 
     // "&&" (bounding-box overlap) zamiast ST_Intersects/ST_Within — upuszczanie pinezek nie
     // wymaga dokładnej geometrii, a "&&" korzysta wprost z istniejącego indeksu GiST na "location".
+    // status IN ('missing', 'found') — 'paused'/'resolved' zgłoszenia celowo znikają z map pinów,
+    // tak samo jak z publicznego feedu (patrz feed.repository.ts's komentarz).
     const rows = await prisma.$queryRaw<RawMapPinRow[]>`
       SELECT id, status, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
       FROM "Pet"
       WHERE location && ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)::geography
+      AND status IN ('missing', 'found')
       ${categoryFragment}
       LIMIT ${PINS_LIMIT};
     `;

@@ -59,6 +59,8 @@ function CloseIcon() {
 const STATUS_LABEL: Record<Pet['status'], string> = {
   missing: 'ZAGINĄŁ',
   found: 'WIDZIANY',
+  paused: 'WSTRZYMANE',
+  resolved: 'ODNALEZIONY',
 };
 
 // Same red/orange coding PetCard.tsx and the map pill markers already use, kept in sync so the
@@ -66,6 +68,8 @@ const STATUS_LABEL: Record<Pet['status'], string> = {
 const STATUS_ACCENT: Record<Pet['status'], string> = {
   missing: 'bg-red-600',
   found: 'bg-orange-500',
+  paused: 'bg-neutral-500',
+  resolved: 'bg-green-600',
 };
 
 // No reverse-geocoded place name exists anywhere in this app (PetResponseDTO only ever carries

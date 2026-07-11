@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { PetTypeFilter } from '@/modules/pets/lib/petType';
 import type { TimeframeFilter } from '@/modules/pets/lib/timeframe';
-import type { PetStatus } from '@/modules/pets/types/pet.types';
+import type { PublicPetStatus } from '@/modules/pets/types/pet.types';
 
 export type AppState = 'STATE_A' | 'STATE_B' | 'STATE_C';
 // Which screen the search modal's stack navigation is currently showing. 'root' is the Root
@@ -39,7 +39,7 @@ export interface AppliedFilters {
   // regardless of status. Only applyFilters() (the search modal's "Szukaj" button) ever narrows
   // this to a single PetStatus, taken from the modal's own always-one-selected draftStatus
   // toggle.
-  status: PetStatus | null;
+  status: PublicPetStatus | null;
   petType: PetTypeFilter | null;
   location: LocationFilter | null;
   timeframe: TimeframeFilter;
@@ -56,7 +56,7 @@ interface AppUIState {
   // (closeSearch) without side effects on STATE_A/STATE_C. draftStatus has no "unset" value
   // (the header's segmented control always shows one segment selected), unlike
   // appliedFilters.status — 'both' is its own concrete segment here, not the absence of one.
-  draftStatus: PetStatus | 'both';
+  draftStatus: PublicPetStatus | 'both';
   draftPetType: PetTypeFilter | null;
   draftLocation: LocationFilter | null;
   draftTimeframe: TimeframeFilter;
@@ -72,7 +72,7 @@ interface AppUIState {
   closeSearch: () => void;
   openDrilldown: (screen: Exclude<ModalScreen, 'root'>) => void;
   closeDrilldown: () => void;
-  setDraftStatus: (status: PetStatus | 'both') => void;
+  setDraftStatus: (status: PublicPetStatus | 'both') => void;
   setDraftPetType: (petType: PetTypeFilter) => void;
   setDraftLocation: (location: LocationFilter | null) => void;
   selectDraftLocation: (location: LocationFilter) => void;

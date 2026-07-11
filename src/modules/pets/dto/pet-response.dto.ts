@@ -5,7 +5,8 @@ export interface PetResponseDTO {
   name: string | null;
   species: string;
   category: PetCategory;
-  status: 'missing' | 'found';
+  status: 'missing' | 'found' | 'paused' | 'resolved';
+  ownerId: string;
   reward: number;
   phone: string | null;
   email: string | null;

@@ -31,6 +31,10 @@ const HAIRLINE_BORDER = '#E5E5E5';
 const STATUS_COPY: Record<PetStatus, { verb: string; colorClass: string; accent: string }> = {
   missing: { verb: 'Zaginął', colorClass: 'text-red-600', accent: '#dc2626' },
   found: { verb: 'Widziany', colorClass: 'text-orange-500', accent: '#f97316' },
+  // Reachable via a bookmarked/shared link to a report the owner has since paused or resolved —
+  // GET /pets/:petId has no status filter (see pet.types.ts's PetStatus comment).
+  paused: { verb: 'Wstrzymane', colorClass: 'text-neutral-500', accent: '#8E8E93' },
+  resolved: { verb: 'Odnaleziony', colorClass: 'text-green-600', accent: '#22C55E' },
 };
 
 // No `ownerId`/name join exists on PetResponseDTO — same "placeholder, not real data" precedent
@@ -42,8 +46,15 @@ const MOCK_REPORTER_NAME = 'Janusz';
 // PetResponseDTO has no free-text description field, so "O zwierzaku" is composed only from
 // fields that actually exist (name/species/status/reward/city) rather than inventing behavior or
 // physical attributes no report ever collected.
+const STATUS_PHRASE: Record<PetStatus, string> = {
+  missing: 'zaginął',
+  found: 'został ostatnio widziany',
+  paused: 'zaginął (poszukiwania wstrzymane)',
+  resolved: 'został odnaleziony',
+};
+
 function buildPetDescription(pet: Pet): string {
-  const statusPhrase = pet.status === 'missing' ? 'zaginął' : 'został ostatnio widziany';
+  const statusPhrase = STATUS_PHRASE[pet.status];
   const cityPhrase = pet.city ? ` w ${pet.city}` : '';
   const rewardPhrase =
     pet.reward > 0 ? ` Za pomoc w odnalezieniu przewidziana jest nagroda w wysokości ${pet.reward} zł.` : '';
@@ -131,7 +142,9 @@ export default function PetDetailPage() {
   }
 
   const status = STATUS_COPY[pet.status];
-  const reporterRole = pet.status === 'missing' ? 'Właściciel' : 'Osoba, która znalazła';
+  // 'found' is a finder's own stray-sighting report; missing/paused/resolved are all the owner's
+  // report of their own pet (paused/resolved just being later states of the same 'missing' report).
+  const reporterRole = pet.status === 'found' ? 'Osoba, która znalazła' : 'Właściciel';
   const distanceLabel = isLocationResolving ? '…' : formatDistance(distanceMeters(origin, pet.location));
 
   return (

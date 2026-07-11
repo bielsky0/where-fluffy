@@ -27,11 +27,17 @@ interface PetCardProps {
 const STATUS_BADGE_TEXT: Record<Pet['status'], string> = {
   missing: 'text-red-600',
   found: 'text-orange-500',
+  // PetCard only ever renders public feed/map/nearby pets (always 'missing'/'found' — see
+  // pet.types.ts's PublicPetStatus) in practice, but Pet['status'] is the wider PetStatus.
+  paused: 'text-neutral-500',
+  resolved: 'text-green-600',
 };
 
 const STATUS_VERB: Record<Pet['status'], string> = {
   missing: 'Zaginął',
   found: 'Widziany',
+  paused: 'Wstrzymane',
+  resolved: 'Odnaleziony',
 };
 
 // No photo field exists on PetResponseDTO yet — a neutral, minimal initial block stands in for

@@ -7,8 +7,11 @@ export const createFeedRepository = (prisma: PrismaClient): FeedRepository => {
   // inserts. Sort key is "createdAt" DESC, id DESC (not ST_Distance — Postgres KNN
   // distance-ordering has no simple cursor continuation); ST_DWithin (using the existing
   // Pet_location_idx GiST index) does the proximity filtering, and ST_Distance is only a
-  // SELECT-ed column for the DTO's distanceMeters field. Deliberately does not filter
-  // status = 'missing' — this section shows both missing/found pets with a status badge.
+  // SELECT-ed column for the DTO's distanceMeters field. Deliberately does not filter down to
+  // status = 'missing' only — this section shows both missing/found pets with a status badge —
+  // but 'paused'/'resolved' pets ARE excluded (status IN (...) below): those are owner-initiated
+  // "stop showing this as active" states (Management Hub — patrz ManagementHubSheet.tsx), not
+  // something the public feed should keep surfacing.
   const findFeedPage: FeedRepository['findFeedPage'] = async ({
     lat,
     lng,
@@ -43,7 +46,8 @@ export const createFeedRepository = (prisma: PrismaClient): FeedRepository => {
              ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng,
              ${distanceFragment}
       FROM "Pet"
-      WHERE ${locationFragment}
+      WHERE status IN ('missing', 'found')
+      AND ${locationFragment}
       ${categoryFragment}
       ${cursorFragment}
       ORDER BY "createdAt" DESC, id DESC

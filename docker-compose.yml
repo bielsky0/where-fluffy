@@ -73,9 +73,10 @@ services:
       FACEBOOK_APP_SECRET: ""
       FACEBOOK_OAUTH_ENABLED: "true"
       # NODE_ENV above is "production", so requestOtp (auth.service.ts) will attempt a real send
-      # via this key rather than logging/echoing devCode — leave RESEND_API_KEY empty here unless
-      # you actually want this container emailing real OTP codes.
-      RESEND_API_KEY: ""
+      # via this key rather than logging/echoing devCode. Pulled from a root-level .env (gitignored,
+      # separate from src/.env which only the host-run `npm run dev` workflow reads) via Compose's
+      # own ${VAR} interpolation, so the real key is never hardcoded/committed here.
+      RESEND_API_KEY: "${RESEND_API_KEY:-}"
       EMAIL_FROM_ADDRESS: "Where's Fluffy <onboarding@resend.dev>"
       # Vector AI & Embedding Pipeline — real self-hosted model (verified working end-to-end
       # against ai-worker/ai-model, see search.repository.ts's <=> query). ai-model is

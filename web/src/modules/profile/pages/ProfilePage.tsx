@@ -1,21 +1,22 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/modules/auth/store/useAuthStore';
 import { useLogout } from '@/modules/auth/api/useAuth';
 import { useAppUIStore } from '@/modules/app/store/useAppUIStore';
-import {
-  ARCHIVED_LISTINGS,
-  INITIAL_ACTIVE_LISTINGS,
-  INITIAL_HELPED_COUNT,
-  MOCK_ACCOUNT_CREATED_AT,
-  getAccountAgeStat,
-} from '../lib/mockProfileData';
+import type { Pet } from '@/modules/pets/types/pet.types';
+import { INITIAL_HELPED_COUNT, MOCK_ACCOUNT_CREATED_AT, getAccountAgeStat } from '../lib/mockProfileData';
 import { useCountUp } from '../lib/useCountUp';
+import { mapPetToListing } from '../lib/mapPetToListing';
+import { generateShareImage } from '../lib/generateShareImage';
+import { shareOrDownloadImage } from '../lib/shareImage';
+import { useMyPets, useUpdatePetStatus, useDeletePet } from '../api/useMyPets';
 import { ListingRow } from '../components/ListingRow';
-import { EditListingPanel, type ListingPatch } from '../components/EditListingPanel';
+import { EditListingPanel } from '../components/EditListingPanel';
+import { ManagementHubSheet } from '../components/ManagementHubSheet';
+import { DeleteConfirmDialog } from '../components/DeleteConfirmDialog';
 import { ConfettiBurst } from '../components/ConfettiBurst';
-import type { ProfileListing } from '../types/profile.types';
+import { CelebrationSharePrompt } from '../components/CelebrationSharePrompt';
 
 const ANTHRACITE = '#222222';
 const MUTED_GRAY = '#8E8E93';
@@ -88,16 +89,18 @@ function StatRow({ value, label }: StatRowProps) {
   );
 }
 
-// Small desaturated tile in the "Archiwum spraw" mosaic — resolved pets get no photo either
-// (same PetResponseDTO gap as everywhere else in this app), so this reuses the letter-monogram
-// precedent but grayscales it, matching the archive's "closed case" visual language.
-function ArchiveThumbnail({ speciesLabel }: { speciesLabel: string }) {
+// Small desaturated tile in the "Archiwum spraw" mosaic — resolved pets' first photo, or the
+// same letter-monogram precedent (grayscaled) when there isn't one.
+function ArchiveThumbnail({ pet }: { pet: Pet }) {
+  if (pet.photoUrls[0]) {
+    return <img src={pet.photoUrls[0]} alt="" className="aspect-square rounded-xl object-cover grayscale" aria-hidden="true" />;
+  }
   return (
     <div
       className="flex aspect-square items-center justify-center rounded-xl bg-neutral-200 text-sm font-bold text-neutral-400 grayscale"
       aria-hidden="true"
     >
-      {speciesLabel.charAt(0).toUpperCase()}
+      {pet.species.charAt(0).toUpperCase()}
     </div>
   );
 }
@@ -111,33 +114,94 @@ export default function ProfilePage() {
   const resetToMain = useAppUIStore((state) => state.resetToMain);
   const logout = useLogout();
 
-  const [activeListings, setActiveListings] = useState<ProfileListing[]>(INITIAL_ACTIVE_LISTINGS);
+  const { data: pets = [], isLoading } = useMyPets();
+  const updatePetStatus = useUpdatePetStatus();
+  const deletePet = useDeletePet();
+
   const [helpedCount, setHelpedCount] = useState(INITIAL_HELPED_COUNT);
-  const [editingListingId, setEditingListingId] = useState<string | null>(null);
+  const [editingPetId, setEditingPetId] = useState<string | null>(null);
+  const [hubListingId, setHubListingId] = useState<string | null>(null);
+  const [deleteListingId, setDeleteListingId] = useState<string | null>(null);
   const [confettiKey, setConfettiKey] = useState(0);
+  const [justResolvedPet, setJustResolvedPet] = useState<Pet | null>(null);
 
-  // Fixed at mount — "Zgłoszeń" counts everything this user has ever filed, active or archived;
-  // resolving a listing moves it out of `activeListings` but must not shrink this total.
-  const [totalReportsCount] = useState(() => INITIAL_ACTIVE_LISTINGS.length + ARCHIVED_LISTINGS.length);
+  const activePets = useMemo(() => pets.filter((pet) => pet.status !== 'resolved'), [pets]);
+  const archivedPets = useMemo(() => pets.filter((pet) => pet.status === 'resolved'), [pets]);
+  const activeListings = useMemo(() => activePets.map(mapPetToListing), [activePets]);
 
-  const editingListing = activeListings.find((listing) => listing.id === editingListingId) ?? null;
+  const editingPet = pets.find((pet) => pet.id === editingPetId) ?? null;
+  const hubListing = activeListings.find((listing) => listing.id === hubListingId) ?? null;
+  const deleteListing = activeListings.find((listing) => listing.id === deleteListingId) ?? null;
   const accountAge = getAccountAgeStat(MOCK_ACCOUNT_CREATED_AT);
 
-  const handleEdit = (id: string) => setEditingListingId(id);
-  const handleCloseEdit = () => setEditingListingId(null);
+  const handleOpenHub = (id: string) => setHubListingId(id);
+  const handleCloseHub = () => setHubListingId(null);
+  const handleCloseEdit = () => setEditingPetId(null);
 
-  const handleSaveEdit = (id: string, patch: ListingPatch) => {
-    setActiveListings((prev) => prev.map((listing) => (listing.id === id ? { ...listing, ...patch } : listing)));
-    setEditingListingId(null);
+  const handleEditFromHub = (id: string) => {
+    setEditingPetId(id);
+    handleCloseHub();
   };
 
-  // Flow 3: confetti burst + the row's own fade/slide-out (ListingRow's `exit`) + the remaining
-  // rows sliding up (ListingRow's `layout`) all fire from this one state update — AnimatePresence
-  // below owns translating "removed from the array" into the actual exit animation.
-  const handleResolve = (id: string) => {
-    setConfettiKey((key) => key + 1);
-    setHelpedCount((count) => count + 1);
-    setActiveListings((prev) => prev.filter((listing) => listing.id !== id));
+  // Flow 4: confetti burst + the row's own fade/slide-out (ListingRow's `exit`) + the remaining
+  // rows sliding up (ListingRow's `layout`) all fire once useMyPets' query is invalidated and
+  // re-derives `activeListings` without this pet — no manual array splicing needed anymore.
+  const handleMarkFound = (id: string) => {
+    updatePetStatus.mutate(
+      { petId: id, status: 'resolved' },
+      {
+        onSuccess: (updated) => {
+          setConfettiKey((key) => key + 1);
+          setHelpedCount((count) => count + 1);
+          setJustResolvedPet(updated);
+        },
+        onError: () => toast('Nie udało się zaktualizować statusu'),
+      },
+    );
+    handleCloseHub();
+  };
+
+  const handleTogglePause = (id: string) => {
+    const pet = activePets.find((entry) => entry.id === id);
+    if (!pet) return;
+    const nextStatus = pet.status === 'paused' ? 'missing' : 'paused';
+    updatePetStatus.mutate(
+      { petId: id, status: nextStatus },
+      { onError: () => toast('Nie udało się zaktualizować statusu') },
+    );
+    handleCloseHub();
+  };
+
+  const handleRequestDelete = (id: string) => {
+    setDeleteListingId(id);
+    handleCloseHub();
+  };
+
+  const handleCancelDelete = () => setDeleteListingId(null);
+
+  const handleConfirmDelete = () => {
+    if (!deleteListingId) return;
+    deletePet.mutate(deleteListingId, {
+      onSuccess: () => {
+        toast('Zgłoszenie zostało usunięte');
+        setDeleteListingId(null);
+      },
+      onError: () => toast('Nie udało się usunąć zgłoszenia'),
+    });
+  };
+
+  const handleShare = async (id: string) => {
+    const pet = pets.find((entry) => entry.id === id);
+    if (!pet) return;
+    try {
+      const blob = await generateShareImage(pet);
+      await shareOrDownloadImage(blob, `${pet.name ?? 'zwierzak'}.png`, {
+        title: `${pet.status === 'resolved' ? 'Odnaleziony' : 'Zaginął'}: ${pet.name ?? pet.species}`,
+        text: 'Pomóż znaleźć — Where’s Fluffy',
+      });
+    } catch {
+      toast('Nie udało się przygotować grafiki do udostępnienia');
+    }
   };
 
   const handleLogout = async () => {
@@ -149,7 +213,7 @@ export default function ProfilePage() {
     <div className="relative h-full w-full overflow-hidden" style={{ backgroundColor: CANVAS }}>
       <motion.div
         initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0, x: editingListingId ? '-100%' : '0%' }}
+        animate={{ opacity: 1, y: 0, x: editingPetId ? '-100%' : '0%' }}
         transition={{ duration: 0.35, ease: 'easeOut' }}
         className="absolute inset-0 flex flex-col overflow-y-auto overscroll-contain px-4 pb-8"
         style={{ paddingTop: 'calc(1rem + env(safe-area-inset-top))' }}
@@ -203,7 +267,7 @@ export default function ProfilePage() {
 
           <div className="flex flex-1 flex-col divide-y" style={{ borderColor: HAIRLINE_BORDER, borderTopColor: 'transparent' }}>
             <div className="[&:not(:first-child)]:border-t" style={{ borderColor: HAIRLINE_BORDER }}>
-              <StatRow value={totalReportsCount} label="Zgłoszeń" />
+              <StatRow value={pets.length} label="Zgłoszeń" />
             </div>
             <div className="border-t" style={{ borderColor: HAIRLINE_BORDER }}>
               <StatRow value={helpedCount} label="Pomogłeś" />
@@ -225,8 +289,8 @@ export default function ProfilePage() {
               Archiwum spraw →
             </span>
             <div className="grid grid-cols-4 gap-1.5">
-              {ARCHIVED_LISTINGS.map((archived) => (
-                <ArchiveThumbnail key={archived.id} speciesLabel={archived.speciesLabel} />
+              {archivedPets.map((pet) => (
+                <ArchiveThumbnail key={pet.id} pet={pet} />
               ))}
             </div>
           </button>
@@ -254,7 +318,13 @@ export default function ProfilePage() {
             Twoje aktywne zgłoszenia
           </h2>
 
-          {activeListings.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-1 items-center justify-center py-16">
+              <p className="text-sm font-medium" style={{ color: MUTED_GRAY }}>
+                Ładowanie…
+              </p>
+            </div>
+          ) : activeListings.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16 text-center">
               <EmptyMapPinIcon />
               <p className="max-w-[220px] text-sm font-medium" style={{ color: MUTED_GRAY }}>
@@ -264,21 +334,35 @@ export default function ProfilePage() {
           ) : (
             <AnimatePresence initial={false}>
               {activeListings.map((listing) => (
-                <ListingRow key={listing.id} listing={listing} onEdit={handleEdit} onResolve={handleResolve} />
+                <ListingRow key={listing.id} listing={listing} onOpenHub={handleOpenHub} onShare={(id) => void handleShare(id)} />
               ))}
             </AnimatePresence>
           )}
         </div>
       </motion.div>
 
-      <EditListingPanel
-        listing={editingListing}
-        open={editingListingId !== null}
-        onClose={handleCloseEdit}
-        onSave={handleSaveEdit}
+      <EditListingPanel pet={editingPet} open={editingPetId !== null} onClose={handleCloseEdit} />
+
+      <ManagementHubSheet
+        listing={hubListing}
+        open={hubListingId !== null}
+        onClose={handleCloseHub}
+        onEdit={handleEditFromHub}
+        onMarkFound={handleMarkFound}
+        onTogglePause={handleTogglePause}
+        onRequestDelete={handleRequestDelete}
+      />
+
+      <DeleteConfirmDialog
+        listing={deleteListing}
+        open={deleteListingId !== null}
+        isDeleting={deletePet.isPending}
+        onCancel={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
       />
 
       <ConfettiBurst triggerKey={confettiKey} />
+      <CelebrationSharePrompt pet={justResolvedPet} onDismiss={() => setJustResolvedPet(null)} />
     </div>
   );
 }

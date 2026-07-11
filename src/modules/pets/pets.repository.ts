@@ -1,7 +1,15 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { CreatePetRecordDTO } from './dto/create-pet.dto.js';
-import { IPet, PetRepository } from './interfaces/pets.interface.js';
+import { IPet, PetRepository, PetUpdatePatch } from './interfaces/pets.interface.js';
 import { mapToDomain, RawPetRow } from './pets.mapper.js';
+
+// Ta sama jawna lista kolumn co findById/save/findNearLocation — nigdy SELECT */RETURNING * na
+// tabeli z kolumną geography (patrz CLAUDE.md's PostGIS gotcha #1).
+const RETURNING_COLUMNS = Prisma.sql`
+  id, name, species, status, category, reward, phone, email, "distinguishingMarks", "photoUrl",
+  "photoUrls", city, "ownerId", "createdAt", "updatedAt",
+  ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
+`;
 
 export const createPetRepository = (prisma: PrismaClient): PetRepository => {
   // Kolumny wybierane jawnie (bez "*"/"RETURNING *") — surowa kolumna "location" jest typu
@@ -77,5 +85,66 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     return affected > 0 ? 'updated' : 'not_found';
   };
 
-  return { findById, save, findNearLocation, updateEmbedding };
+  const findByOwnerId = async (ownerId: string): Promise<IPet[]> => {
+    const pets = await prisma.$queryRaw<RawPetRow[]>`
+      SELECT ${RETURNING_COLUMNS}
+      FROM "Pet"
+      WHERE "ownerId" = ${ownerId}
+      ORDER BY "createdAt" DESC
+    `;
+    return pets.map(mapToDomain);
+  };
+
+  // Buduje UPDATE tylko dla kluczy faktycznie obecnych w `patch` — reszta kolumn zostaje
+  // nietknięta. `location` idzie przez ten sam ST_SetSRID(ST_MakePoint(...)) co w save() powyżej.
+  // Zwraca null zamiast rzucać, gdy `petId` nie istnieje (0 dotkniętych wierszy).
+  const update = async (petId: string, patch: PetUpdatePatch): Promise<IPet | null> => {
+    const fragments: Prisma.Sql[] = [];
+    if (patch.name !== undefined) fragments.push(Prisma.sql`name = ${patch.name}`);
+    if (patch.species !== undefined) fragments.push(Prisma.sql`species = ${patch.species}`);
+    if (patch.category !== undefined) fragments.push(Prisma.sql`category = ${patch.category}`);
+    if (patch.reward !== undefined) fragments.push(Prisma.sql`reward = ${patch.reward}`);
+    if (patch.phone !== undefined) fragments.push(Prisma.sql`phone = ${patch.phone}`);
+    if (patch.email !== undefined) fragments.push(Prisma.sql`email = ${patch.email}`);
+    if (patch.distinguishingMarks !== undefined) {
+      fragments.push(Prisma.sql`"distinguishingMarks" = ${patch.distinguishingMarks}`);
+    }
+    if (patch.photoUrl !== undefined) fragments.push(Prisma.sql`"photoUrl" = ${patch.photoUrl}`);
+    if (patch.photoUrls !== undefined) fragments.push(Prisma.sql`"photoUrls" = ${patch.photoUrls}`);
+    if (patch.city !== undefined) fragments.push(Prisma.sql`city = ${patch.city}`);
+    if (patch.location !== undefined) {
+      fragments.push(
+        Prisma.sql`location = ST_SetSRID(ST_MakePoint(${patch.location.lng}, ${patch.location.lat}), 4326)::geography`,
+      );
+    }
+    fragments.push(Prisma.sql`"updatedAt" = now()`);
+
+    const [pet] = await prisma.$queryRaw<RawPetRow[]>`
+      UPDATE "Pet" SET ${Prisma.join(fragments, ', ')}
+      WHERE id = ${petId}
+      RETURNING ${RETURNING_COLUMNS};
+    `;
+    return pet ? mapToDomain(pet) : null;
+  };
+
+  // Węższy, jednokolumnowy odpowiednik update() — celowo osobno, ta sama logika "dyskretnych akcji"
+  // co przy podziale schematów (patrz pets.schema.ts).
+  const updateStatus = async (petId: string, status: IPet['status']): Promise<IPet | null> => {
+    const [pet] = await prisma.$queryRaw<RawPetRow[]>`
+      UPDATE "Pet" SET status = ${status}, "updatedAt" = now()
+      WHERE id = ${petId}
+      RETURNING ${RETURNING_COLUMNS};
+    `;
+    return pet ? mapToDomain(pet) : null;
+  };
+
+  // Comment/ChatRoom mają onDelete: Cascade na relacji do Pet (schema.prisma) — kasując wiersz
+  // Pet, baza sama usuwa powiązane komentarze/pokoje czatu/wiadomości. `embedding` to kolumna na
+  // tym samym wierszu, więc znika razem z nim — bez osobnego czyszczenia wektorów.
+  const deleteById = async (petId: string): Promise<'deleted' | 'not_found'> => {
+    const affected = await prisma.$executeRaw`DELETE FROM "Pet" WHERE id = ${petId}`;
+    return affected > 0 ? 'deleted' : 'not_found';
+  };
+
+  return { findById, save, findNearLocation, updateEmbedding, findByOwnerId, update, updateStatus, deleteById };
 };

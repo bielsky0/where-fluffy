@@ -17,8 +17,8 @@
 # Required vars (put these in .env.production, gitignored, never in this file):
 #   DOMAIN, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, JWT_SECRET, FRONTEND_URL
 #   (https://<DOMAIN>), BACKEND_PUBLIC_URL (https://<DOMAIN>), GF_SECURITY_ADMIN_PASSWORD,
-#   RESEND_API_KEY, GOOGLE_CLIENT_ID/SECRET, FACEBOOK_APP_ID/SECRET — whichever of the last two
-#   OAuth pairs you actually enable.
+#   RESEND_API_KEY, CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET, GOOGLE_CLIENT_ID/SECRET,
+#   FACEBOOK_APP_ID/SECRET — whichever of the last two OAuth pairs you actually enable.
 
 services:
   db:
@@ -48,6 +48,12 @@ services:
       # (same :? pattern as JWT_SECRET above) so a missing key fails `docker compose up` itself
       # instead of a container crash-loop discovered later via `docker compose logs`.
       RESEND_API_KEY: "${RESEND_API_KEY:?RESEND_API_KEY must be set in production}"
+      # cloudinary.config.ts already throws at boot if any of these are unset (no defaults,
+      # same as RESEND_API_KEY above) — repeated here so `docker compose up` itself fails fast
+      # instead of a container crash-loop discovered later via `docker compose logs`.
+      CLOUDINARY_CLOUD_NAME: "${CLOUDINARY_CLOUD_NAME:?CLOUDINARY_CLOUD_NAME must be set}"
+      CLOUDINARY_API_KEY: "${CLOUDINARY_API_KEY:?CLOUDINARY_API_KEY must be set}"
+      CLOUDINARY_API_SECRET: "${CLOUDINARY_API_SECRET:?CLOUDINARY_API_SECRET must be set}"
       # Dev-only escape hatch (see docker-compose.yml's api service) — must NOT be set in
       # production, or oauth.config.ts's https:// requirement on FRONTEND_URL is silently bypassed.
       ALLOW_INSECURE_ORIGIN: "false"

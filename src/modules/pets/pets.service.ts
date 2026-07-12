@@ -5,7 +5,7 @@ import { UpdatePetDTO } from './dto/update-pet.dto.js';
 import { IPet, PetRepository } from './interfaces/pets.interface.js';
 import { mapToResponseDTO, mapToSimilarResponseDTO } from './pets.mapper.js';
 import { categorizePetSpecies } from './pets.category.js';
-import { PhotoService } from '../../shared/photo/photo.service.js';
+import { ImageStorageProvider } from '../../shared/photo/image-storage.interface.js';
 import { GeocodingService } from '../../shared/geocoding/interfaces/geocoding.interface.js';
 import { createAppError } from '../../shared/errors/app-error.js';
 import { PetEmbeddingQueue } from '../../shared/queue/pet-embedding.queue.js';
@@ -35,7 +35,7 @@ const EMBEDDING_RELEVANT_FIELDS = ['name', 'species', 'distinguishingMarks'] as 
 
 export const createPetsService = (
   petRepository: PetRepository,
-  photoService: PhotoService,
+  imageStorageProvider: ImageStorageProvider,
   geocodingService: GeocodingService,
   petEmbeddingQueue: PetEmbeddingQueue,
 ): PetsService => {
@@ -43,7 +43,7 @@ export const createPetsService = (
     // Tutaj opcjonalnie: logika biznesowa (np. limit zgłoszeń dla darmowego konta)
     const category = categorizePetSpecies(dto.species);
     const { photoBase64s, ...rest } = dto;
-    const photoUrls = await Promise.all(photoBase64s.map((base64) => photoService.store(base64)));
+    const photoUrls = await Promise.all(photoBase64s.map((base64) => imageStorageProvider.upload(base64)));
     const photoUrl = photoUrls[0];
     // Geocoding never throws (see geocoding.service.ts's Silent Fallback contract) — a slow or
     // unreachable Nominatim must not block/fail pet creation, it just leaves city null.
@@ -96,17 +96,21 @@ export const createPetsService = (
     const category = dto.species !== undefined ? categorizePetSpecies(dto.species) : undefined;
 
     // Diffing zdjęć: wpisy już obecne w pet.photoUrls są używane bez zmian (pomijają
-    // photoService.store), nowe wpisy przechodzą przez store() — dziś to no-op echo (patrz
-    // photo.service.ts), ale zachowuje szew pod przyszły prawdziwy upload. Kolejność, w jakiej
+    // imageStorageProvider.upload), nowe wpisy przechodzą przez upload(). Kolejność, w jakiej
     // klient wysłał tablicę, staje się nową kolejnością — to właśnie zapisuje reorder zdjęć,
-    // bez osobnego endpointu.
+    // bez osobnego endpointu. Wpisy, które wypadły z tablicy, trafiają do removedPhotoUrls i są
+    // sprzątane ze storage'u po udanym update (patrz niżej).
     let photoUrls: string[] | undefined;
     let photoUrl: string | undefined;
+    let removedPhotoUrls: string[] = [];
     if (dto.photoBase64s !== undefined) {
       photoUrls = await Promise.all(
-        dto.photoBase64s.map((entry) => (pet.photoUrls.includes(entry) ? entry : photoService.store(entry))),
+        dto.photoBase64s.map((entry) =>
+          pet.photoUrls.includes(entry) ? entry : imageStorageProvider.upload(entry),
+        ),
       );
       photoUrl = photoUrls[0];
+      removedPhotoUrls = pet.photoUrls.filter((url) => !photoUrls!.includes(url));
     }
 
     const updated = await petRepository.update(petId, {
@@ -121,6 +125,16 @@ export const createPetsService = (
       ...(photoUrls !== undefined && { photoUrls, photoUrl }),
     });
     if (!updated) throw createAppError(404, 'Zgłoszenie zwierzaka nie istnieje');
+
+    // Sprzątanie storage'u nie może zawalić już udanej aktualizacji wiersza Pet — ten sam
+    // kompromis "nie wycofuj sukcesu" co przy enqueueEmbedPetData poniżej.
+    await Promise.all(
+      removedPhotoUrls.map((url) =>
+        imageStorageProvider
+          .remove(url)
+          .catch((err) => logger.error({ err, petId, url }, 'failed to remove photo from storage')),
+      ),
+    );
 
     const embeddingRelevantChange = EMBEDDING_RELEVANT_FIELDS.some(
       (field) => dto[field] !== undefined && dto[field] !== pet[field],
@@ -148,8 +162,18 @@ export const createPetsService = (
   };
 
   const deletePet = async (petId: string, requesterId: string): Promise<void> => {
-    await assertOwnership(petId, requesterId);
+    const pet = await assertOwnership(petId, requesterId);
     await petRepository.deleteById(petId);
+
+    // Storage cleanup nie może zamienić już udanego usunięcia w 500 — patrz ten sam kompromis
+    // przy sprzątaniu zdjęć w updatePet powyżej.
+    await Promise.all(
+      pet.photoUrls.map((url) =>
+        imageStorageProvider
+          .remove(url)
+          .catch((err) => logger.error({ err, petId, url }, 'failed to remove photo from storage')),
+      ),
+    );
   };
 
   // "Podobne zwierzęta w okolicy": brak throw dla jakiegokolwiek przypadku "brak wyników"

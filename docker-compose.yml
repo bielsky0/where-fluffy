@@ -83,6 +83,11 @@ services:
       # own ${VAR} interpolation, so the real key is never hardcoded/committed here.
       RESEND_API_KEY: "${RESEND_API_KEY:-}"
       EMAIL_FROM_ADDRESS: "Where's Fluffy <onboarding@resend.dev>"
+      # No file-level default: cloudinary.config.ts refuses to start without these (same
+      # fail-fast pattern as JWT_SECRET above). Pulled from the root .env, same as RESEND_API_KEY.
+      CLOUDINARY_CLOUD_NAME: "${CLOUDINARY_CLOUD_NAME:?CLOUDINARY_CLOUD_NAME must be set in the root .env}"
+      CLOUDINARY_API_KEY: "${CLOUDINARY_API_KEY:?CLOUDINARY_API_KEY must be set in the root .env}"
+      CLOUDINARY_API_SECRET: "${CLOUDINARY_API_SECRET:?CLOUDINARY_API_SECRET must be set in the root .env}"
       # Vector AI & Embedding Pipeline — real self-hosted model (verified working end-to-end
       # against ai-worker/ai-model, see search.repository.ts's <=> query). ai-model is
       # deliberately NOT in this service's depends_on: semantic search must degrade (503, see

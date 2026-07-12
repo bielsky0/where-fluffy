@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createPetsService } from './pets.service.js';
 import { createPetsController } from './pets.controller.js';
 import { IPet, PetRepository } from './interfaces/pets.interface.js';
-import { PhotoService } from '../../shared/photo/photo.service.js';
+import { ImageStorageProvider } from '../../shared/photo/image-storage.interface.js';
 import { GeocodingService } from '../../shared/geocoding/interfaces/geocoding.interface.js';
 import { PetEmbeddingQueue } from '../../shared/queue/pet-embedding.queue.js';
 import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js';
@@ -44,10 +44,13 @@ const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
 });
 
 const buildTestApp = (repository: PetRepository, userId = 'owner-1'): Express => {
-  const photoService: PhotoService = { store: jest.fn(async (base64: string) => base64) };
+  const imageStorageProvider: ImageStorageProvider = {
+    upload: jest.fn(async (base64: string) => base64),
+    remove: jest.fn(async () => undefined),
+  };
   const geocodingService: GeocodingService = { reverseGeocode: jest.fn(async () => null) };
   const petEmbeddingQueue: PetEmbeddingQueue = { enqueueEmbedPetData: jest.fn(), close: jest.fn() };
-  const petsService = createPetsService(repository, photoService, geocodingService, petEmbeddingQueue);
+  const petsService = createPetsService(repository, imageStorageProvider, geocodingService, petEmbeddingQueue);
   const controller = createPetsController(petsService);
 
   const app = express();

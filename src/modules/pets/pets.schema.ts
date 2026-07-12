@@ -19,7 +19,7 @@ export const createPetBaseSchema = z.object({
   phone: z.string().min(9).max(20).optional(),
   email: z.string().email().optional(),
   distinguishingMarks: z.string().max(300).optional(),
-  // Data URL-e (base64) skompresowanych zdjęć — patrz photo.service.ts. Wymagane, min. 1 zdjęcie
+  // Data URL-e (base64) skompresowanych zdjęć — patrz shared/photo/cloudinary.adapter.ts. Wymagane, min. 1 zdjęcie
   // (żelazna zasada V2: brak zgłoszenia bez dokumentacji wizualnej, obie ścieżki).
   photoBase64s: z.array(z.string()).min(1, 'Dodaj co najmniej jedno zdjęcie'),
 });

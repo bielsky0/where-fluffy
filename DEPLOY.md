@@ -52,10 +52,9 @@ docker compose --env-file .env.production -f docker-compose.yml -f docker-compos
   nie ma jak dobić do kolektora. Żeby to naprawić: dodać trasę w Caddyfile (np.
   `handle /otlp/* { reverse_proxy alloy:4318 }`) i ustawić `VITE_OTEL_EXPORTER_OTLP_ENDPOINT`
   odpowiednio. Do tego czasu to znana, nieblokująca funkcja no-op.
-- **`NOMINATIM_USER_AGENT`/`PHOTON_USER_AGENT`** w kodzie mają placeholder z przykładowym
-  mailem — podmień przed realnym ruchem (wymóg polityki użycia obu usług), i pamiętaj że to
-  wymaga też dodania odpowiedniej linii do `docker-compose.yml`'s `environment:`, nie tylko
-  `.env.production` (patrz komentarz w `.env.production.example`).
+- **`NOMINATIM_USER_AGENT`/`PHOTON_USER_AGENT`** mają placeholder z przykładowym mailem jako
+  domyślną wartość — ustaw je w `.env.production` na realny kontaktowy adres przed realnym
+  ruchem (wymóg polityki użycia obu usług geokodowania).
 - **Zmiana `VITE_*` wymaga rebuildu**, nie restartu — Vite zaszywa je w bundlu w momencie
   `docker compose ... build web`.
 - **Migracje Prisma nie są uruchamiane automatycznie** przy starcie kontenera `api` — odpal

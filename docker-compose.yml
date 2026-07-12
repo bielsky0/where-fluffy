@@ -94,6 +94,14 @@ services:
       # search.service.ts) rather than block api startup on the model container being healthy.
       EMBEDDING_SERVICE_URL: "http://ai-model:11434"
       EMBEDDING_PROVIDER: "local"
+      # Content Seeding admin allowlist (see shared/config/admin.config.ts) — empty by default,
+      # same non-throwing pattern as the code's own Zod default, so leaving this unset in .env
+      # just means no admin routes are reachable yet, not a startup failure.
+      ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
+      # Usage-policy requirement for both geocoding services: replace the placeholder contact
+      # email in .env before sending real production traffic through Nominatim/Photon.
+      NOMINATIM_USER_AGENT: "${NOMINATIM_USER_AGENT:-where-fluffy/1.0 (contact@example.com)}"
+      PHOTON_USER_AGENT: "${PHOTON_USER_AGENT:-where-fluffy/1.0 (contact@example.com)}"
     ports:
       - "3000:3000" # alternative to running `npm run dev` on the host — don't run both at once,
                      # they'd fight over this same host port.

@@ -59,8 +59,14 @@ services:
       ALLOW_INSECURE_ORIGIN: "false"
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      # Base docker-compose.yml defaults both kill switches to "true" (fine for local dev with
+      # placeholder creds crashing loudly instead of silently) — overridden here so a prod
+      # .env.production with no OAuth app registered yet degrades to "feature off" instead of
+      # every Google/Facebook login attempt failing against empty client id/secret.
+      GOOGLE_OAUTH_ENABLED: "${GOOGLE_OAUTH_ENABLED:-false}"
       FACEBOOK_APP_ID: "${FACEBOOK_APP_ID:-}"
       FACEBOOK_APP_SECRET: "${FACEBOOK_APP_SECRET:-}"
+      FACEBOOK_OAUTH_ENABLED: "${FACEBOOK_OAUTH_ENABLED:-false}"
     # Not published to the host at all — only `proxy` (Caddy) and other containers on
     # `fluffy-net` reach this, via the internal DNS name `api`, never a host port.
     ports: !override []

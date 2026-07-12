@@ -110,7 +110,7 @@ export function MapExplorerPage() {
   const [bbox, setBbox] = useState<Bbox>(() => deriveInitialBbox(queryCenter));
   const handleBoundsChange = useDebouncedCallback((bounds: BoundsRect) => setBbox(bounds), BBOX_DEBOUNCE_MS);
 
-  const { data: pins = [] } = useMapPins(bbox, appliedFilters.petType);
+  const { data: pins = [] } = useMapPins({ mode: 'bbox', bbox }, appliedFilters.petType);
   const {
     data: feedData,
     fetchNextPage,
@@ -164,8 +164,17 @@ export function MapExplorerPage() {
   const resultsHeadline = appliedFilters.petType
     ? `${PET_TYPE_LABELS_PLURAL[appliedFilters.petType]} w okolicy`
     : 'Zwierzęta w okolicy';
+  // For a GPS-sourced filter (the user's own resolving location, see LocationFilter's `source`
+  // doc comment), prefer the live origin's city over the label frozen at search-confirm time —
+  // the city name can still resolve after that snapshot was taken (useAppLocation.ts's
+  // gpsLabelQuery lags the coordinate fix by one extra network round trip), and without this the
+  // header stays stuck on whatever generic/partial label was current at that moment.
+  const locationLabel =
+    appliedFilters.location?.source === 'gps'
+      ? (userOrigin.city ?? appliedFilters.location.label)
+      : appliedFilters.location?.label;
   const resultsSubline =
-    [appliedFilters.location?.label, appliedFilters.timeframe !== 'all' ? TIMEFRAME_LABELS[appliedFilters.timeframe] : null]
+    [locationLabel, appliedFilters.timeframe !== 'all' ? TIMEFRAME_LABELS[appliedFilters.timeframe] : null]
       .filter((part): part is string => Boolean(part))
       .join(' • ') || 'Cała okolica';
 

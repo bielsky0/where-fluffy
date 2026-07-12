@@ -69,4 +69,13 @@ export interface MapProps {
   // viewport rather than just its center (the map explorer's dual-query bbox fetch). Separate
   // prop rather than folding into onCenterChange since most callers only need one or the other.
   onBoundsChange?: (bounds: BoundsRect) => void;
+  // 'muted' swaps the tile provider to CARTO Positron (no-labels) — a pre-styled, desaturated,
+  // POI-free basemap, used by the public Hero's live map so the coral markers/radar circle stay
+  // the visual focus. Defaults to 'standard' (today's OSM raster tiles), so every existing caller
+  // (MapExplorerPage, pet-detail mini-map, add-listing wizard's StepMapPin) is visually unchanged.
+  tileTheme?: 'standard' | 'muted';
+  // Opt-in radar circle around a point, spring-animated (grow/overshoot) on radius change rather
+  // than snapping — see providers/LeafletMap.tsx's AnimatedRadiusCircle. `null`/undefined renders
+  // nothing; only the public Hero passes this today.
+  radiusCircle?: { center: Coordinate; radiusMeters: number } | null;
 }

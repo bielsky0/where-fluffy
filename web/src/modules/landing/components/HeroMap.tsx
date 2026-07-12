@@ -1,15 +1,50 @@
+import { useMemo } from 'react';
 import { Map } from '@/shared/components/map/Map';
-import { FALLBACK_ORIGIN } from '@/shared/config/geo.config';
+import type { Coordinate, MapMarkerProps } from '@/shared/components/map/types';
+import type { MapPin } from '@/modules/map/types/mapPin.types';
 
-// Default-exported (not named) so Hero.tsx can `React.lazy(() => import('./HeroMap'))` it — this
-// keeps react-leaflet out of the landing page's initial bundle (see Hero.tsx's own comment on
-// bundle isolation) while still rendering the real shared `<Map/>` facade (see
-// shared/components/map/Map.tsx) rather than a second, parallel map implementation. Hero.tsx
-// wraps this in a `pointer-events-none` container, so there's no need to fight react-leaflet's
-// own dragging/scroll-zoom here — those events simply never reach it. This map is pure
-// decoration (no markers, no interaction), so any real-looking city center works; it never has
-// to match a visitor's actual location — it just reuses the app's shared fallback origin rather
-// than a second hardcoded literal.
-export default function HeroMap() {
-  return <Map center={FALLBACK_ORIGIN} zoom={13} className="h-full w-full" />;
+const CATEGORY_EMOJI: Record<MapPin['category'], string> = { dog: '🐶', cat: '🐱', other: '🐾' };
+const STATUS_LABEL: Record<MapPin['status'], string> = { missing: 'Zaginiony', found: 'Znaleziony' };
+
+interface HeroMapProps {
+  center: Coordinate;
+  radiusMeters: number;
+  pins: MapPin[];
+  onPinClick: (pin: MapPin) => void;
+}
+
+// Default-exported (not named) so Hero.tsx can `React.lazy(() => import('./HeroMap'))` it — keeps
+// react-leaflet out of the landing page's initial bundle (see Hero.tsx's own comment on bundle
+// isolation). Unlike the old purely decorative version, this now renders real markers plus a
+// spring-animated radar circle over a muted (CARTO Positron, no-labels) basemap — still the one
+// shared `<Map/>` facade, not a second parallel map implementation.
+export default function HeroMap({ center, radiusMeters, pins, onPinClick }: HeroMapProps) {
+  const markers = useMemo<MapMarkerProps[]>(
+    () =>
+      pins.map((pin) => ({
+        id: pin.id,
+        position: { lat: pin.lat, lng: pin.lng },
+        emoji: CATEGORY_EMOJI[pin.category],
+        freshness: STATUS_LABEL[pin.status],
+        tone: pin.status === 'missing' ? 'danger' : 'warning',
+        onClick: () => onPinClick(pin),
+      })),
+    [pins, onPinClick],
+  );
+
+  return (
+    <Map
+      center={center}
+      // MapContainer's own `center` prop only applies once, on mount (see LeafletMap.tsx's own
+      // comment) — without `focusCenter`, picking a new location in HeroSearchOverlay (or GPS)
+      // updates `center` but the map itself never pans there. `focusCenter` is what MapExplorerPage
+      // already uses for the same reason (flying to a newly-selected pet).
+      focusCenter={center}
+      zoom={12}
+      className="h-full w-full"
+      tileTheme="muted"
+      radiusCircle={{ center, radiusMeters }}
+      markers={markers}
+    />
+  );
 }

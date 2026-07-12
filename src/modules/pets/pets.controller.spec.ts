@@ -51,7 +51,10 @@ const buildTestApp = (repository: PetRepository, userId = 'owner-1'): Express =>
     upload: jest.fn(async (base64: string) => base64),
     remove: jest.fn(async () => undefined),
   };
-  const geocodingService: GeocodingService = { reverseGeocode: jest.fn(async () => null) };
+  const geocodingService: GeocodingService = {
+    reverseGeocode: jest.fn(async () => null),
+    reverseGeocodeLabel: jest.fn(async () => null),
+  };
   const petEmbeddingQueue: PetEmbeddingQueue = { enqueueEmbedPetData: jest.fn(), close: jest.fn() };
   const petsService = createPetsService(repository, imageStorageProvider, geocodingService, petEmbeddingQueue);
   const controller = createPetsController(petsService);

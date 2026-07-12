@@ -64,6 +64,7 @@ describe('createPetsService', () => {
     };
     mockGeocodingService = {
       reverseGeocode: jest.fn().mockResolvedValue(null),
+      reverseGeocodeLabel: jest.fn().mockResolvedValue(null),
     };
     mockPetEmbeddingQueue = {
       enqueueEmbedPetData: jest.fn(),

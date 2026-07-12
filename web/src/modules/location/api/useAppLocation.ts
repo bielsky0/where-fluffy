@@ -7,6 +7,16 @@ import { isLocationFresh, useLocationStore } from '../store/useLocationStore';
 import type { AppLocation } from '../types/location.types';
 
 const LOCATION_ME_QUERY_KEY = ['location', 'me'] as const;
+const GPS_LABEL_QUERY_KEY = ['location', 'me', 'gps-label'] as const;
+
+// Both location queries below are persisted across sessions by AppProviders.tsx's
+// PersistQueryClientProvider (not excluded from its dehydrateOptions), so `staleTime: Infinity`
+// would mean "whatever response was cached first is replayed forever, with no way to
+// self-correct" — including a bad response from a since-fixed backend bug, or a one-off
+// geocoding-service hiccup. A bounded staleTime still avoids re-fetching on every load (the
+// common case) but guarantees eventual revalidation. 24h matches the persister's own default
+// `maxAge`, so there's one cache-turnover rhythm to reason about, not two.
+const LOCATION_STALE_TIME_MS = 24 * 60 * 60 * 1000;
 
 // The single point of contact components should use for "where is the user" — step 1 (GeoIP,
 // automatic on mount via GET /location/me) + step 2 (exact GPS, persisted across sessions in
@@ -23,7 +33,7 @@ export function useAppLocation() {
   const geoIpQuery = useQuery({
     queryKey: LOCATION_ME_QUERY_KEY,
     queryFn: () => apiFetch<AppLocation>('/location/me'),
-    staleTime: Infinity,
+    staleTime: LOCATION_STALE_TIME_MS,
     // Wait for the persisted store to rehydrate before deciding GeoIP is needed — before
     // hydration, `exact` reads null even for users who do have a persisted fix, and firing
     // GeoIP unconditionally in that split second is a wasted/discarded request. Once hydrated,
@@ -31,6 +41,30 @@ export function useAppLocation() {
     // an IP-level guess.
     enabled: hasHydrated && exact === null,
   });
+
+  // A fresh GPS fix starts with city: null (triggerExactLocation below has no reverse-geocode of
+  // its own) — this fills in a friendly district/city label via the extended GET /location/me
+  // (now accepting lat/lng, see src/modules/location/location.service.ts's 'gps' source branch),
+  // then persists the resolved label so every consumer of `origin` (Hero, MapExplorerPage,
+  // SearchModal) gets it for free with no code changes of their own. Deliberately NOT gated on
+  // `exact.city === null` — that would fetch once per fresh fix and then never again, so any bad
+  // response (this query's own persisted-forever bug, a geocoding hiccup, whatever) that ever
+  // gets written into `exact.city` would stay stuck there permanently, since the fix's coordinates
+  // themselves can stay "fresh" (isLocationFresh) for a long time without a new triggerExactLocation
+  // call to reset it. Relying on the query's own `staleTime` instead means it still only fetches
+  // once per (lat,lng) in the common case (same query key, cached), but revalidates in the
+  // background once that cached response ages past LOCATION_STALE_TIME_MS — the actual mechanism
+  // that lets a wrong cached label self-correct.
+  const gpsLabelQuery = useQuery({
+    queryKey: [...GPS_LABEL_QUERY_KEY, exact?.lat, exact?.lng],
+    queryFn: () => apiFetch<AppLocation>(`/location/me?lat=${exact!.lat}&lng=${exact!.lng}`),
+    enabled: exact !== null && exact.source === 'gps',
+    staleTime: LOCATION_STALE_TIME_MS,
+  });
+
+  useEffect(() => {
+    if (gpsLabelQuery.data) setExact(gpsLabelQuery.data);
+  }, [gpsLabelQuery.data, setExact]);
 
   const triggerExactLocation = useCallback(async (): Promise<AppLocation | null> => {
     try {

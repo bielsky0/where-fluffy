@@ -97,12 +97,19 @@ export function FeedList({ query, origin, scrollContainerRef, onSelectPet }: Fee
   }
 
   return (
-    <div ref={wrapperRef} className="relative px-4" style={{ height: rowVirtualizer.getTotalSize() }}>
+    <div ref={wrapperRef} className="relative" style={{ height: rowVirtualizer.getTotalSize() }}>
       {rowVirtualizer.getVirtualItems().map((virtualRow) => {
         const pet = items[virtualRow.index];
         return (
           <div
             key={pet.id}
+            // px-4 lives here, not on the wrapper above: this div is absolutely positioned for
+            // react-virtual, and an absolutely positioned element's containing block is its
+            // nearest positioned ancestor's *padding box* — so left:0/width:100% would resolve
+            // against (and ignore) padding put on the wrapper instead, leaving cards flush
+            // against the screen edge. Padding on this row's own box isn't affected by that and
+            // applies normally to its child.
+            className="px-4"
             style={{
               position: 'absolute',
               top: 0,

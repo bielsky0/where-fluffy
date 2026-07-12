@@ -81,31 +81,78 @@ describe('createMapRepository (integration)', () => {
     return id;
   };
 
-  describe('findPinsInBbox', () => {
+  describe('findPins (bbox mode)', () => {
     it('includes pets inside the envelope and excludes pets outside it', async () => {
       const insideId = await insertPet({ location: NEAR });
       await insertPet({ location: FAR });
 
-      const pins = await repository.findPinsInBbox(BBOX);
+      const pins = await repository.findPins({ bbox: BBOX });
 
       expect(pins.map((p) => p.id)).toEqual([insideId]);
     });
 
-    it('returns the flat {id, lat, lng, status} shape', async () => {
-      const id = await insertPet({ location: NEAR, status: 'found' });
+    it('returns the flat {id, lat, lng, status, category} shape', async () => {
+      const id = await insertPet({ location: NEAR, status: 'found', category: 'dog' });
 
-      const [pin] = await repository.findPinsInBbox(BBOX);
+      const [pin] = await repository.findPins({ bbox: BBOX });
 
-      expect(pin).toEqual({ id, lat: expect.any(Number), lng: expect.any(Number), status: 'found' });
+      expect(pin).toEqual({
+        id,
+        lat: expect.any(Number),
+        lng: expect.any(Number),
+        status: 'found',
+        category: 'dog',
+      });
     });
 
     it('filters by category when provided', async () => {
       const dogId = await insertPet({ category: 'dog', location: NEAR });
       await insertPet({ category: 'cat', location: NEAR });
 
-      const pins = await repository.findPinsInBbox({ ...BBOX, category: 'dog' });
+      const pins = await repository.findPins({ bbox: BBOX, category: 'dog' });
 
       expect(pins.map((p) => p.id)).toEqual([dogId]);
+    });
+  });
+
+  describe('findPins (radius mode)', () => {
+    it('includes pets within the radius and excludes pets outside it', async () => {
+      const insideId = await insertPet({ location: NEAR });
+      await insertPet({ location: FAR });
+
+      const pins = await repository.findPins({ ...CENTER, radiusInMeters: 1000 });
+
+      expect(pins.map((p) => p.id)).toEqual([insideId]);
+    });
+
+    it('filters by category when provided', async () => {
+      const dogId = await insertPet({ category: 'dog', location: NEAR });
+      await insertPet({ category: 'cat', location: NEAR });
+
+      const pins = await repository.findPins({ ...CENTER, radiusInMeters: 1000, category: 'dog' });
+
+      expect(pins.map((p) => p.id)).toEqual([dogId]);
+    });
+  });
+
+  describe('getStats', () => {
+    it('returns total/missing/found counts within the radius', async () => {
+      await insertPet({ location: NEAR, status: 'missing' });
+      await insertPet({ location: NEAR, status: 'found' });
+      await insertPet({ location: FAR, status: 'missing' }); // outside radius, excluded
+
+      const stats = await repository.getStats({ ...CENTER, radiusInMeters: 1000 });
+
+      expect(stats).toEqual({ total: 2, missing: 1, found: 1 });
+    });
+
+    it('filters by category when provided', async () => {
+      await insertPet({ location: NEAR, status: 'missing', category: 'dog' });
+      await insertPet({ location: NEAR, status: 'missing', category: 'cat' });
+
+      const stats = await repository.getStats({ ...CENTER, radiusInMeters: 1000, category: 'dog' });
+
+      expect(stats).toEqual({ total: 1, missing: 1, found: 0 });
     });
   });
 });

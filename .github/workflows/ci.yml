@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # dev: local development branch — runs the same test/build gate as main, but the `deploy`
+    # job below only fires for main (see its own `if`), so pushing here never touches the VPS.
+    branches: [main, dev]
   pull_request:
     branches: [main]
 
@@ -71,9 +73,10 @@ jobs:
 
   deploy:
     needs: [backend, frontend]
-    # Only push-to-main triggers a deploy — pull_request runs (this same workflow, triggered by
-    # the `on.pull_request` block above) must never touch the prod host, and `needs` alone
-    # wouldn't stop that since PR runs also complete backend/frontend successfully.
+    # Only push-to-main triggers a deploy — pull_request runs and push-to-dev (this same
+    # workflow, triggered by the `on.push`/`on.pull_request` blocks above) must never touch the
+    # prod host, and `needs` alone wouldn't stop that since those runs also complete
+    # backend/frontend successfully.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:

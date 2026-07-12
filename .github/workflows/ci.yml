@@ -52,3 +52,34 @@ jobs:
       - run: npm ci
 
       - run: npm run build
+
+  deploy:
+    needs: [backend, frontend]
+    # Only push-to-main triggers a deploy — pull_request runs (this same workflow, triggered by
+    # the `on.pull_request` block above) must never touch the prod host, and `needs` alone
+    # wouldn't stop that since PR runs also complete backend/frontend successfully.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # .env.production lives only on the VPS (gitignored, never in this repo or CI) — every
+          # secret it holds (JWT_SECRET, CLOUDINARY_*, RESEND_API_KEY, POSTGRES_PASSWORD, ...)
+          # stays off GitHub entirely. `exec -T`: no TTY on a non-interactive CI SSH session,
+          # `docker compose exec` fails without it. `prisma migrate deploy` is safe to re-run on
+          # every deploy (no-op when there's nothing new to apply) — see DEPLOY.md for why this
+          # targets db:5432 directly rather than the pgbouncer:6432 DATABASE_URL the api
+          # container itself runs with (Prisma's migration advisory locks under pooling).
+          script: |
+            set -e
+            cd ~/where-fluffy
+            git pull
+            docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+            set -a; source .env.production; set +a
+            docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml \
+              exec -T -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB" \
+              api npx prisma migrate deploy

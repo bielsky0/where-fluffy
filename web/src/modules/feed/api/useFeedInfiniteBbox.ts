@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/apiClient';
 import { bboxToQueryValue, roundBbox, type Bbox } from '@/shared/lib/bbox';
 import type { PetTypeFilter } from '@/modules/pets/lib/petType';
@@ -25,5 +25,10 @@ export function useFeedInfiniteBbox(bbox: Bbox | null, category: PetTypeFilter |
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled: roundedBbox !== null,
+    // A pin click flies/pans the map, which itself changes the bbox that keys this query — without
+    // this, `data` goes undefined mid-refetch, `feedPets` collapses to `[]`, and the just-clicked
+    // pet's selection resolves to null and back, which unmounts/remounts PetDetailPanel and flips
+    // BottomSheet's `hidden` prop (MapExplorerPage.tsx) on every such pan.
+    placeholderData: keepPreviousData,
   });
 }

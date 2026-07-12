@@ -70,13 +70,16 @@ describe('createFeedRepository (integration)', () => {
   // findFeedPage doesn't write data — seed rows directly, sequencing createdAt explicitly via a
   // small setTimeout between inserts (same pattern comments.repository.integration.spec.ts uses)
   // so createdAt ordering is deterministic rather than racing on same-microsecond timestamps.
-  const insertPet = async (overrides: { name?: string; status?: string; category?: string; location?: { lat: number; lng: number } } = {}) => {
+  const insertPet = async (
+    overrides: { name?: string; status?: string; category?: string; location?: { lat: number; lng: number }; photoUrls?: string[] } = {},
+  ) => {
     const id = randomUUID();
     await prisma.$executeRaw`
-      INSERT INTO "Pet" (id, name, species, category, reward, "ownerId", status, location, "updatedAt")
+      INSERT INTO "Pet" (id, name, species, category, reward, "ownerId", status, location, "photoUrls", "updatedAt")
       VALUES (${id}, ${overrides.name ?? 'Rex'}, 'dog', ${overrides.category ?? 'dog'}, 0, ${owner.id},
               ${overrides.status ?? 'missing'},
               ST_SetSRID(ST_MakePoint(${(overrides.location ?? CENTER).lng}, ${(overrides.location ?? CENTER).lat}), 4326)::geography,
+              ${overrides.photoUrls ?? []},
               now())
     `;
     return id;
@@ -168,6 +171,14 @@ describe('createFeedRepository (integration)', () => {
 
       expect(typeof items[0].distanceMeters).toBe('number');
       expect(items[0].distanceMeters).toBeGreaterThan(0);
+    });
+
+    it('returns photoUrls', async () => {
+      await insertPet({ location: NEAR, photoUrls: ['https://example.test/rex.jpg'] });
+
+      const { items } = await repository.findFeedPage({ lat: CENTER.lat, lng: CENTER.lng, radiusInMeters: 5000, limit: 20 });
+
+      expect(items[0].photoUrls).toEqual(['https://example.test/rex.jpg']);
     });
 
     // Map-viewport (bbox) mode — mutually exclusive with the radius mode exercised above.

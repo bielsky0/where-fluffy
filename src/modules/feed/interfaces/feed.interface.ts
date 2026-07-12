@@ -18,6 +18,7 @@ export interface IFeedPet {
   // Content Seeding (admin) — patrz pets/interfaces/pets.interface.ts's IPet.isAdminAdded.
   isAdminAdded: boolean;
   createdAt: Date;
+  photoUrls: string[];
 }
 
 export type FeedPageParams = {

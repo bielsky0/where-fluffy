@@ -40,11 +40,22 @@ const STATUS_VERB: Record<Pet['status'], string> = {
   resolved: 'Odnaleziony',
 };
 
-// No photo field exists on PetResponseDTO yet — a neutral, minimal initial block stands in for
-// a real photo, deliberately uncolored by status (the premium spec keeps the image surface
-// quiet/monochrome and puts all status signal in the ZAGINĄŁ/WIDZIANY badge instead) rather than
-// pointing <img> at a URL that doesn't exist.
+// pet.photoUrls[0] mirrors ProfilePage.tsx's/HeroGallery.tsx's own fallback: alt="" + aria-hidden
+// since the card's outer role="button" already carries the accessible name via
+// getPetDisplayName, so the image itself is decorative. Falls back to a neutral, minimal initial
+// block — deliberately uncolored by status (the premium spec keeps the image surface
+// quiet/monochrome and puts all status signal in the ZAGINĄŁ/WIDZIANY badge instead) — when the
+// pet has no photo yet.
 function PetImage({ pet }: { pet: Pet }) {
+  // Optional chaining, not a plain index: a localStorage-persisted TanStack Query cache
+  // (AppProviders.tsx) can still hold a pre-fix feed response shaped like the old DTO, which had
+  // no photoUrls field at all — not even `[]` — until it's next refetched.
+  const photoUrl = pet.photoUrls?.[0];
+
+  if (photoUrl) {
+    return <img src={photoUrl} alt="" aria-hidden="true" className="size-full object-cover" />;
+  }
+
   return (
     <div
       className="flex size-full items-center justify-center bg-neutral-100 text-6xl font-bold text-neutral-300"
@@ -145,9 +156,10 @@ function PetCardComponent({
       >
         <PetImage pet={pet} />
 
-        {/* Decorative gallery-position chrome, not a real multi-photo carousel — there's only
-            ever the one placeholder image (see PetImage above), so a single active dot mirrors
-            reality rather than implying more photos exist. */}
+        {/* Decorative gallery-position chrome, not a real multi-photo carousel — PetImage above
+            only ever shows pet.photoUrls[0], so a single active dot mirrors reality rather than
+            implying more photos are swipeable here (the full gallery lives on the detail page's
+            HeroGallery). */}
         <div className="absolute inset-x-0 bottom-2.5 flex items-center justify-center" aria-hidden="true">
           <span className="h-1.5 w-1.5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.4)]" />
         </div>

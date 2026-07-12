@@ -38,8 +38,15 @@ jobs:
 
       - run: npm run test:unit
 
-      # testcontainers spins up real postgis/postgis:16-3.4 containers — needs the Docker
-      # daemon already present on GitHub's ubuntu-latest runners, no extra setup required.
+      # *.repository.integration.spec.ts files point testcontainers at the local image tag
+      # "where-fluffy/postgres-ai:16" (infra/db/Dockerfile: postgis/postgis:16-3.4 + pgvector),
+      # not a plain postgis/postgis tag — that image only exists because `docker compose build`
+      # was run at some point on a dev machine. A fresh GitHub-hosted runner has no such local
+      # image and no registry to pull "where-fluffy/postgres-ai" from, so testcontainers fails
+      # with "pull access denied" unless we build it here first.
+      - name: Build local Postgres+PostGIS+pgvector image for testcontainers
+        run: docker build -t where-fluffy/postgres-ai:16 ../infra/db
+
       - run: npm run test:integration
 
       - run: npm run build

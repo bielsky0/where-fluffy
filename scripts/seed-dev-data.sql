@@ -1,26 +1,26 @@
 -- Dev-only sample data: one test user, two sample lost pets, two sample sightings.
 --
--- IMPORTANT — read before assuming this "just runs on startup":
+-- IMPORTANT — this file is deliberately NOT under init-scripts/, and must stay that way:
 --
 -- Postgres's official image runs every *.sql/*.sh file under /docker-entrypoint-initdb.d
--- exactly once, the very first time the container starts against an EMPTY data volume — and
--- that happens before this repo's `api` service (and therefore before `npx prisma migrate
--- dev`) has ever run. This script only INSERTs into "User"/"Pet"/"Comment" — the tables
--- Prisma's migrations create — so on a genuinely fresh volume those tables don't exist yet and
--- this script fails with "relation does not exist". docker-compose's `depends_on` only waits
--- for the `db` container to have started, not for migrations to have run inside it — there is
--- no ordering guarantee between the two.
+-- exactly once, the very first time a container starts against an EMPTY data volume — before
+-- this repo's `api` service (and therefore before `npx prisma migrate dev`/`deploy`) has ever
+-- run. This script only INSERTs into "User"/"Pet"/"Comment" — the tables Prisma's migrations
+-- create — so on a genuinely fresh volume those tables don't exist yet and this script fails
+-- with "relation does not exist", which aborts the whole init sequence (Postgres's entrypoint
+-- runs init scripts with ON_ERROR_STOP, so this one failing also skips any *.sql files that
+-- would otherwise run after it alphabetically). This previously lived at
+-- init-scripts/02-seed-dev-data.sql, auto-mounted (as the whole directory) into
+-- /docker-entrypoint-initdb.d by docker-compose.yml's `db` service — which crashed `db` on
+-- first boot in production (fresh volume, migrations not run yet) and, worse, would have
+-- auto-inserted a publicly-known dev login (dev@example.com / password123) into a live
+-- database on any run where it didn't hit that race. It was moved to scripts/ specifically so
+-- it never runs automatically, in dev or prod — only ever by explicit invocation below.
 --
 -- Reliable way to apply this seed data on a fresh environment:
 --   1. docker compose up -d db
 --   2. cd src && npx prisma migrate dev        (creates "User"/"Pet"/"Comment"/... for real)
---   3. docker compose exec -T db psql -U user -d fluffy_db < ../init-scripts/02-seed-dev-data.sql
---
--- No docker-compose.yml change is needed to "mount" this file — db's volumes already include
--- `./init-scripts:/docker-entrypoint-initdb.d` (see 01-init-postgis.sql, already in this same
--- directory); Postgres runs every file there in filename order, so this one is picked up
--- automatically alongside it. The only thing that doesn't work automatically is the ordering
--- against Prisma described above.
+--   3. docker compose exec -T db psql -U user -d fluffy_db < ../scripts/seed-dev-data.sql
 --
 -- Table/column names below are Prisma's actual generated schema (quoted, mixed-case — see
 -- src/prisma/schema.prisma), not the lowercase `users`/`pets`/`sightings` this was originally

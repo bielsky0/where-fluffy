@@ -25,6 +25,12 @@ services:
       DB_USER: user
       DB_PASSWORD: password
       DB_NAME: fluffy_db
+      # edoburu/pgbouncer's entrypoint defaults LISTEN_PORT to 5432 when unset — silently
+      # mismatching the "6432:6432" port mapping below and every DATABASE_URL in this file that
+      # points at "pgbouncer:6432" (api's, and the manual `prisma migrate deploy` override in
+      # DEPLOY.md). Without this, pgbouncer never receives a single connection: it's still
+      # listening on 5432 internally while everything else dials 6432.
+      LISTEN_PORT: "6432"
     ports:
       - "6432:6432"
     depends_on:

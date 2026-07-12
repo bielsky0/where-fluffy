@@ -15,6 +15,7 @@ export type RawFeedPetRow = {
   lng: number;
   // NULL in bbox mode — see feed.repository.ts's distanceFragment.
   distanceMeters: number | null;
+  isAdminAdded: boolean;
 };
 
 export const mapFeedRowToDomain = (row: RawFeedPetRow): IFeedPet => ({
@@ -27,6 +28,7 @@ export const mapFeedRowToDomain = (row: RawFeedPetRow): IFeedPet => ({
   createdAt: row.createdAt,
   location: { lat: row.lat, lng: row.lng },
   distanceMeters: row.distanceMeters === null ? null : Number(row.distanceMeters),
+  isAdminAdded: row.isAdminAdded,
 });
 
 export const mapFeedToResponseDTO = (pet: IFeedPet): FeedPetResponseDTO => ({
@@ -38,5 +40,6 @@ export const mapFeedToResponseDTO = (pet: IFeedPet): FeedPetResponseDTO => ({
   reward: Number(pet.reward),
   location: { lat: Number(pet.location.lat), lng: Number(pet.location.lng) },
   distanceMeters: pet.distanceMeters === null ? null : Number(pet.distanceMeters),
+  isAdminAdded: pet.isAdminAdded,
   createdAt: pet.createdAt.toISOString(),
 });

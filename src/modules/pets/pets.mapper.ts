@@ -17,6 +17,9 @@ export type RawPetRow = {
   photoUrl: string | null;
   photoUrls: string[];
   city: string | null;
+  sourceUrl: string | null;
+  originalContact: string | null;
+  isAdminAdded: boolean;
   ownerId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -38,6 +41,9 @@ export const mapToDomain = (row: RawPetRow): IPet => ({
   photoUrl: row.photoUrl,
   photoUrls: row.photoUrls,
   city: row.city,
+  sourceUrl: row.sourceUrl,
+  originalContact: row.originalContact,
+  isAdminAdded: row.isAdminAdded,
   ownerId: row.ownerId,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -59,6 +65,9 @@ export const mapToResponseDTO = (pet: IPet): PetResponseDTO => ({
   photoUrl: pet.photoUrl,
   photoUrls: pet.photoUrls,
   city: pet.city,
+  sourceUrl: pet.sourceUrl,
+  originalContact: pet.originalContact,
+  isAdminAdded: pet.isAdminAdded,
   location: {
     lat: Number(pet.location.lat),
     lng: Number(pet.location.lng),

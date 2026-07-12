@@ -12,7 +12,8 @@ export const createSearchRepository = (prisma: PrismaClient): SearchRepository =
 
     const rows = await prisma.$queryRaw<RawSearchRow[]>`
       SELECT id, name, species, status, category, reward, phone, email, "distinguishingMarks",
-             "photoUrl", "photoUrls", city, "ownerId", "createdAt", "updatedAt",
+             "photoUrl", "photoUrls", city, "sourceUrl", "originalContact", "isAdminAdded",
+             "ownerId", "createdAt", "updatedAt",
              ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng,
              1 - (embedding <=> ${vectorLiteral}::vector) as similarity
       FROM "Pet"

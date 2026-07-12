@@ -138,6 +138,28 @@ describe('createPetRepository (integration)', () => {
       expect(pet.photoUrls).toEqual([]);
       expect(pet.city).toBeNull();
     });
+
+    it('persists sourceUrl/originalContact/isAdminAdded (Content Seeding, admin-only path)', async () => {
+      const pet = await repository.save(
+        buildCreateDto({
+          sourceUrl: 'https://facebook.com/groups/example/posts/123',
+          originalContact: 'Jan Kowalski, 600 100 200',
+          isAdminAdded: true,
+        }),
+      );
+
+      expect(pet.sourceUrl).toBe('https://facebook.com/groups/example/posts/123');
+      expect(pet.originalContact).toBe('Jan Kowalski, 600 100 200');
+      expect(pet.isAdminAdded).toBe(true);
+    });
+
+    it('defaults isAdminAdded to false and sourceUrl/originalContact to null on the regular (non-admin) path', async () => {
+      const pet = await repository.save(buildCreateDto());
+
+      expect(pet.isAdminAdded).toBe(false);
+      expect(pet.sourceUrl).toBeNull();
+      expect(pet.originalContact).toBeNull();
+    });
   });
 
   describe('findById', () => {

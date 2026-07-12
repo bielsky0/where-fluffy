@@ -15,6 +15,8 @@ export interface IFeedPet {
   // null in bbox mode — ST_Distance needs a single reference point to measure from, which a
   // viewport bbox doesn't have (see feed.repository.ts's distanceFragment).
   distanceMeters: number | null;
+  // Content Seeding (admin) — patrz pets/interfaces/pets.interface.ts's IPet.isAdminAdded.
+  isAdminAdded: boolean;
   createdAt: Date;
 }
 

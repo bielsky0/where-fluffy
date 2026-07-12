@@ -11,6 +11,12 @@ export interface CreatePetDTO {
   distinguishingMarks?: string;
   photoBase64s: string[];
   ownerId: string;
+  // Content Seeding (admin) — undefined/false na zwykłej ścieżce POST /pets, ustawiane wyłącznie
+  // przez pets.controller.ts's createAdminSeeded. Patrz pets.service.ts's reportMissingPet — brak
+  // zmian tam, bo `{ photoBase64s, ...rest }` przenosi te pola dalej automatycznie.
+  sourceUrl?: string;
+  originalContact?: string;
+  isAdminAdded?: boolean;
 }
 
 // What actually reaches PetRepository.save — CreatePetDTO (minus the raw photoBase64s, which

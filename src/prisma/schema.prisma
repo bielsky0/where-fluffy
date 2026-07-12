@@ -72,6 +72,12 @@ model Pet {
   phone               String?
   email               String?
   distinguishingMarks String?
+  // Content Seeding (cold start) — ustawiane wyłącznie przez POST /pets/admin
+  // (patrz pets.controller.ts's createAdminSeeded, shared/middleware/require-admin.middleware.ts).
+  // Zwykła ścieżka POST /pets nigdy ich nie ustawia — createPetSchema ich nie deklaruje.
+  sourceUrl           String?
+  originalContact     String?
+  isAdminAdded        Boolean  @default(false)
   photoUrl            String?
   photoUrls           String[] @default([])
   city                String?

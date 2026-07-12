@@ -18,6 +18,9 @@ const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
   photoUrl: null,
   photoUrls: [],
   city: null,
+  sourceUrl: null,
+  originalContact: null,
+  isAdminAdded: false,
   createdAt: new Date('2026-01-01T10:00:00.000Z'),
   updatedAt: new Date('2026-01-02T10:00:00.000Z'),
   ...overrides,
@@ -32,6 +35,7 @@ const buildFeedPet = (overrides: Partial<IFeedPet> = {}): IFeedPet => ({
   reward: 100,
   location: { lat: 52.2297, lng: 21.0122 },
   distanceMeters: 120,
+  isAdminAdded: false,
   createdAt: new Date('2026-01-01T10:00:00.000Z'),
   ...overrides,
 });
@@ -94,6 +98,18 @@ describe('createFeedService', () => {
 
       expect(page.nextCursor).toBe(encodeFeedCursor(lastItem));
       expect(page.items).toHaveLength(2);
+    });
+
+    it('carries isAdminAdded through into the mapped feed page (Content Seeding badge signal)', async () => {
+      mockFeedRepository.findFeedPage.mockResolvedValue({
+        items: [buildFeedPet({ isAdminAdded: true })],
+        hasNextPage: false,
+      });
+      const service = createFeedService(mockFeedRepository, mockPetRepository);
+
+      const page = await service.getFeedPage({ lat: 52.2297, lng: 21.0122, radiusInMeters: 5000, cursor: null, limit: 20 });
+
+      expect(page.items[0]).toEqual(expect.objectContaining({ isAdminAdded: true }));
     });
 
     it('returns a null nextCursor when hasNextPage is false', async () => {

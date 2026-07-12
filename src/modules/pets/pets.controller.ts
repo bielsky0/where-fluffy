@@ -9,6 +9,7 @@ import { SimilarPetsQuery } from './similar-pets.schema.js';
 
 export type PetsController = {
   create: (req: AuthenticatedRequest, res: Response) => Promise<void>;
+  createAdminSeeded: (req: AuthenticatedRequest, res: Response) => Promise<void>;
   listNearby: (req: AuthenticatedRequest, res: Response) => Promise<void>;
   getById: (req: AuthenticatedRequest, res: Response) => Promise<void>;
   listMine: (req: AuthenticatedRequest, res: Response) => Promise<void>;
@@ -32,6 +33,23 @@ export const createPetsController = (petsService: PetsService): PetsController =
     const createPetDto: CreatePetDTO = {
       ...validatedBody,
       ownerId: req.user!.id,
+    };
+
+    const result = await petsService.reportMissingPet(createPetDto);
+    res.status(201).json(result);
+  };
+
+  // ADMIN: Content Seeding — req.body już zwalidowany przez validate(createAdminPetSchema),
+  // trasa już zabezpieczona przez authenticate + requireAdmin (pets.routes.ts's POST /pets/admin).
+  // isAdminAdded jest tu zahardkodowane na true — nigdy nie przyjmowane od klienta, ta sama
+  // motywacja co ownerId w create() powyżej.
+  const createAdminSeeded = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const validatedBody = req.body as Omit<CreatePetDTO, 'ownerId' | 'isAdminAdded'>;
+
+    const createPetDto: CreatePetDTO = {
+      ...validatedBody,
+      ownerId: req.user!.id,
+      isAdminAdded: true,
     };
 
     const result = await petsService.reportMissingPet(createPetDto);
@@ -96,5 +114,5 @@ export const createPetsController = (petsService: PetsService): PetsController =
     res.status(200).json(result);
   };
 
-  return { create, listNearby, getById, listMine, update, updateStatus, remove, getSimilar };
+  return { create, createAdminSeeded, listNearby, getById, listMine, update, updateStatus, remove, getSimilar };
 };

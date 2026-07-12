@@ -14,6 +14,9 @@ export interface PetResponseDTO {
   photoUrl: string | null;
   photoUrls: string[];
   city: string | null;
+  sourceUrl: string | null;
+  originalContact: string | null;
+  isAdminAdded: boolean;
   location: {
     lat: number;
     lng: number;

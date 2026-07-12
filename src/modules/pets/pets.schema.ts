@@ -24,15 +24,33 @@ export const createPetBaseSchema = z.object({
   photoBase64s: z.array(z.string()).min(1, 'Dodaj co najmniej jedno zdjęcie'),
 });
 
-export const createPetSchema = createPetBaseSchema
-  .refine((data) => data.status !== 'missing' || Boolean(data.name), {
-    message: 'Podaj imię zwierzaka',
-    path: ['name'],
-  })
-  .refine((data) => Boolean(data.phone) || Boolean(data.email), {
-    message: 'Podaj telefon lub e-mail',
-    path: ['phone'],
-  });
+// Wspólne reguły biznesowe dla createPetSchema (zwykła ścieżka) i createAdminPetSchema (Content
+// Seeding, poniżej) — wydzielone, bo .refine() zamienia ZodObject w ZodEffects, który nie ma
+// .extend() (patrz komentarz nad createPetBaseSchema), więc createAdminPetSchema nie może po
+// prostu dodać pól do już zrefinowanego createPetSchema.
+const withPetRefinements = <T extends z.ZodObject<z.ZodRawShape>>(schema: T) =>
+  schema
+    .refine((data) => data.status !== 'missing' || Boolean(data.name), {
+      message: 'Podaj imię zwierzaka',
+      path: ['name'],
+    })
+    .refine((data) => Boolean(data.phone) || Boolean(data.email), {
+      message: 'Podaj telefon lub e-mail',
+      path: ['phone'],
+    });
+
+export const createPetSchema = withPetRefinements(createPetBaseSchema);
+
+// Admin-only (Content Seeding, patrz pets.routes.ts's POST /pets/admin) — sourceUrl/
+// originalContact istnieją wyłącznie na tym schemacie. `isAdminAdded` celowo NIE jest tu polem:
+// jest zawsze ustawiane po stronie serwera na true w pets.controller.ts's createAdminSeeded,
+// tak samo jak ownerId pochodzi tam z req.user!.id, a nie z ciała żądania.
+export const createAdminPetSchema = withPetRefinements(
+  createPetBaseSchema.extend({
+    sourceUrl: z.string().url('Podaj prawidłowy URL źródła').optional(),
+    originalContact: z.string().max(300).optional(),
+  }),
+);
 
 // Edycja nigdy nie niesie `status` — zmiany statusu idą przez własny endpoint
 // (updatePetStatusSchema poniżej), żeby dyskretne akcje Management Hub (Edytuj / Oznacz jako

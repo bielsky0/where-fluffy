@@ -7,7 +7,7 @@ import { mapToDomain, mapToSimilarDomain, RawPetRow, RawSimilarPetRow } from './
 // tabeli z kolumną geography (patrz CLAUDE.md's PostGIS gotcha #1).
 const RETURNING_COLUMNS = Prisma.sql`
   id, name, species, status, category, reward, phone, email, "distinguishingMarks", "photoUrl",
-  "photoUrls", city, "ownerId", "createdAt", "updatedAt",
+  "photoUrls", city, "sourceUrl", "originalContact", "isAdminAdded", "ownerId", "createdAt", "updatedAt",
   ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
 `;
 
@@ -19,7 +19,7 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
   const findById = async (id: string): Promise<IPet | null> => {
     const [pet] = await prisma.$queryRaw<RawPetRow[]>`
       SELECT id, name, species, status, category, reward, phone, email, "distinguishingMarks", "photoUrl",
-             "photoUrls", city, "ownerId", "createdAt", "updatedAt",
+             "photoUrls", city, "sourceUrl", "originalContact", "isAdminAdded", "ownerId", "createdAt", "updatedAt",
              ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
       FROM "Pet"
       WHERE id = ${id}
@@ -35,16 +35,17 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     const [pet] = await prisma.$queryRaw<RawPetRow[]>`
       INSERT INTO "Pet" (
         id, name, species, category, reward, phone, email, "distinguishingMarks", "photoUrl",
-        "photoUrls", city, "ownerId", status, location, "updatedAt"
+        "photoUrls", city, "sourceUrl", "originalContact", "isAdminAdded", "ownerId", status, location, "updatedAt"
       )
       VALUES (
         gen_random_uuid(), ${dto.name ?? null}, ${dto.species}, ${dto.category}, ${dto.reward},
         ${dto.phone ?? null}, ${dto.email ?? null}, ${dto.distinguishingMarks ?? null}, ${dto.photoUrl ?? null},
-        ${dto.photoUrls}, ${dto.city}, ${dto.ownerId}, ${dto.status},
+        ${dto.photoUrls}, ${dto.city}, ${dto.sourceUrl ?? null}, ${dto.originalContact ?? null},
+        ${dto.isAdminAdded ?? false}, ${dto.ownerId}, ${dto.status},
         ST_SetSRID(ST_MakePoint(${dto.location.lng}, ${dto.location.lat}), 4326)::geography, now()
       )
       RETURNING id, name, species, status, category, reward, phone, email, "distinguishingMarks", "photoUrl",
-                "photoUrls", city, "ownerId", "createdAt", "updatedAt",
+                "photoUrls", city, "sourceUrl", "originalContact", "isAdminAdded", "ownerId", "createdAt", "updatedAt",
                 ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng;
     `;
     return mapToDomain(pet);
@@ -56,7 +57,7 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
 
     const pets = await prisma.$queryRaw<RawPetRow[]>`
       SELECT id, name, species, status, category, reward, phone, email, "distinguishingMarks", "photoUrl",
-             "photoUrls", city, "ownerId", "createdAt", "updatedAt",
+             "photoUrls", city, "sourceUrl", "originalContact", "isAdminAdded", "ownerId", "createdAt", "updatedAt",
              ST_Y(location::geometry) as lat,
              ST_X(location::geometry) as lng
       FROM "Pet"
@@ -153,7 +154,8 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
         SELECT location, embedding FROM "Pet" WHERE id = ${petId}
       )
       SELECT p.id, p.name, p.species, p.status, p.category, p.reward, p.phone, p.email,
-             p."distinguishingMarks", p."photoUrl", p."photoUrls", p.city, p."ownerId",
+             p."distinguishingMarks", p."photoUrl", p."photoUrls", p.city,
+             p."sourceUrl", p."originalContact", p."isAdminAdded", p."ownerId",
              p."createdAt", p."updatedAt",
              ST_Y(p.location::geometry) as lat, ST_X(p.location::geometry) as lng,
              ST_Distance(p.location, source.location) as "distanceMeters"

@@ -20,6 +20,9 @@ const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
   photoUrl: null,
   photoUrls: [],
   city: null,
+  sourceUrl: null,
+  originalContact: null,
+  isAdminAdded: false,
   createdAt: new Date('2026-01-01T10:00:00.000Z'),
   updatedAt: new Date('2026-01-02T10:00:00.000Z'),
   ...overrides,
@@ -87,6 +90,26 @@ describe('createPetsService', () => {
       });
     });
 
+    it('passes sourceUrl/originalContact/isAdminAdded through to repository.save unchanged (Content Seeding)', async () => {
+      const dto = buildCreateDto({
+        sourceUrl: 'https://facebook.com/groups/example/posts/123',
+        originalContact: 'Jan Kowalski, 600 100 200',
+        isAdminAdded: true,
+      });
+      mockRepository.save.mockResolvedValue(buildPet({ isAdminAdded: true }));
+      const service = createPetsService(mockRepository, mockImageStorageProvider, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await service.reportMissingPet(dto);
+
+      expect(mockRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceUrl: 'https://facebook.com/groups/example/posts/123',
+          originalContact: 'Jan Kowalski, 600 100 200',
+          isAdminAdded: true,
+        }),
+      );
+    });
+
     it('categorizes the pet from its species before saving', async () => {
       const dto = buildCreateDto({ species: 'Kot europejski' });
       mockRepository.save.mockResolvedValue(buildPet({ category: 'cat' }));
@@ -151,6 +174,9 @@ describe('createPetsService', () => {
         photoUrl: savedPet.photoUrl,
         photoUrls: savedPet.photoUrls,
         city: savedPet.city,
+        sourceUrl: savedPet.sourceUrl,
+        originalContact: savedPet.originalContact,
+        isAdminAdded: savedPet.isAdminAdded,
         location: savedPet.location,
         createdAt: savedPet.createdAt.toISOString(),
       });
@@ -238,6 +264,9 @@ describe('createPetsService', () => {
           photoUrl: nearbyPet.photoUrl,
           photoUrls: nearbyPet.photoUrls,
           city: nearbyPet.city,
+          sourceUrl: nearbyPet.sourceUrl,
+          originalContact: nearbyPet.originalContact,
+          isAdminAdded: nearbyPet.isAdminAdded,
           location: nearbyPet.location,
           createdAt: nearbyPet.createdAt.toISOString(),
         },
@@ -467,6 +496,9 @@ describe('createPetsService', () => {
           photoUrl: candidate.photoUrl,
           photoUrls: candidate.photoUrls,
           city: candidate.city,
+          sourceUrl: candidate.sourceUrl,
+          originalContact: candidate.originalContact,
+          isAdminAdded: candidate.isAdminAdded,
           location: candidate.location,
           createdAt: candidate.createdAt.toISOString(),
           distanceMeters: 1234.5,

@@ -15,6 +15,8 @@ export interface FeedPetResponseDTO {
   location: { lat: number; lng: number };
   // null in bbox (map-viewport) mode — see feed.repository.ts's distanceFragment.
   distanceMeters: number | null;
+  // Content Seeding (admin) — patrz pets/dto/pet-response.dto.ts's PetResponseDTO.isAdminAdded.
+  isAdminAdded: boolean;
   createdAt: string;
 }
 

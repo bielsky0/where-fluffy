@@ -21,6 +21,10 @@ export interface IPet {
   photoUrl: string | null;
   photoUrls: string[];
   city: string | null;
+  // Content Seeding (admin) — patrz dto/create-pet.dto.ts.
+  sourceUrl: string | null;
+  originalContact: string | null;
+  isAdminAdded: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

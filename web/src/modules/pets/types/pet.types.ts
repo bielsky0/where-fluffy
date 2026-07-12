@@ -28,6 +28,12 @@ export interface Pet {
   distinguishingMarks: string | null;
   photoUrls: string[];
   city: string | null;
+  // Content Seeding (admin) — mirrors the backend's PetResponseDTO.sourceUrl/originalContact/
+  // isAdminAdded (src/modules/pets/dto/pet-response.dto.ts). sourceUrl/originalContact are only
+  // ever non-null for admin-seeded listings.
+  sourceUrl: string | null;
+  originalContact: string | null;
+  isAdminAdded: boolean;
   location: {
     lat: number;
     lng: number;

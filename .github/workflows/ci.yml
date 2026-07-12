@@ -23,6 +23,15 @@ jobs:
 
       - run: npm ci
 
+      # prisma.config.ts loads DATABASE_URL via prisma/config's env(), which throws if the var
+      # is unset — `npm ci`'s own @prisma/client postinstall generate silently produces an
+      # unconfigured stub client without this (no User/Pet/Prisma.sql/PrismaClientKnownRequestError
+      # exports), which only surfaces two steps later as tsc errors. Placeholder value only:
+      # generate reads the schema, never connects to a real database.
+      - run: npx prisma generate
+        env:
+          DATABASE_URL: "postgresql://user:password@localhost:5432/fluffy_db"
+
       # Authoritative type-check gate — jest specs are transpiled by ts-jest in isolated mode
       # and don't type-check the app on their own (see CLAUDE.md).
       - run: npx tsc --noEmit

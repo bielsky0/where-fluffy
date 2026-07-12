@@ -1,5 +1,6 @@
+import { useEffect, useRef, useState } from 'react';
 import { Map } from '@/shared/components/map';
-import type { BoundsRect } from '@/shared/components/map/types';
+import type { BoundsRect, Coordinate } from '@/shared/components/map/types';
 import { PET_STATUS_LABEL } from '../lib/petStatus';
 import type { MapPin } from '@/modules/map/types/mapPin.types';
 
@@ -28,15 +29,35 @@ const PIN_EMOJI = '🐾';
 export function MapView({ pins, center, selectedPetId, onSelectPet, onBoundsChange }: MapViewProps) {
   const selectedPin = pins.find((pin) => pin.id === selectedPetId) ?? null;
 
+  // Tracked locally rather than derived as `selectedPin ? pinCoords : center` — that fallback
+  // made *deselecting* a pin manufacture a "target changed" (pin coords -> center coords) even
+  // when `center` itself never moved, so LeafletMap.tsx's FlyToFocus flew the map back to
+  // center on every popup close. Only update for the two legitimate reasons: `center` genuinely
+  // changing value (GPS resolving, explicit search recenter — MapContainer's `center` prop only
+  // applies once on mount, see LeafletMap.tsx, so this is what actually pans an already-mounted
+  // map), or a pin getting newly selected. Closing a popup updates neither, so no fly happens —
+  // the map just stays where it is.
+  const [focusCenter, setFocusCenter] = useState<Coordinate | null>(null);
+  const prevCenterRef = useRef(center);
+
+  useEffect(() => {
+    if (center.lat === prevCenterRef.current.lat && center.lng === prevCenterRef.current.lng) return;
+    prevCenterRef.current = center;
+    setFocusCenter(center);
+  }, [center]);
+
+  // Keyed on `selectedPin?.id`, not `selectedPin` itself — `pins` is a fresh array/object on
+  // every query resolution, so keying on the object would re-fly to the same pin on every
+  // refetch instead of only on an actual new selection.
+  useEffect(() => {
+    if (selectedPin) setFocusCenter({ lat: selectedPin.lat, lng: selectedPin.lng });
+  }, [selectedPin?.id]);
+
   return (
     <Map
       center={center}
       zoom={13}
-      // Falls back to `center` (not null) so a newly-searched location actually pans the live
-      // map — MapContainer's own `center` prop only applies once, on mount (see
-      // LeafletMap.tsx's FlyToFocus), so without this fallback picking a new location in the
-      // search modal silently never moved the map. Pin selection still takes priority.
-      focusCenter={selectedPin ? { lat: selectedPin.lat, lng: selectedPin.lng } : center}
+      focusCenter={focusCenter}
       onBoundsChange={onBoundsChange}
       markers={pins.map((pin) => ({
         id: pin.id,

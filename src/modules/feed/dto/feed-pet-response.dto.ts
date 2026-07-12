@@ -18,6 +18,7 @@ export interface FeedPetResponseDTO {
   // Content Seeding (admin) — patrz pets/dto/pet-response.dto.ts's PetResponseDTO.isAdminAdded.
   isAdminAdded: boolean;
   createdAt: string;
+  photoUrls: string[];
 }
 
 export interface FeedPageResponseDTO {

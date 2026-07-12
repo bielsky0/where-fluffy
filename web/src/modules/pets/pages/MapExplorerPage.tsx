@@ -5,7 +5,7 @@ import { useMapPins } from '@/modules/map/api/useMapPins';
 import { useFeedInfiniteBbox } from '@/modules/feed/api/useFeedInfiniteBbox';
 import { useAppLocation } from '@/modules/location/api/useAppLocation';
 import { useDebouncedCallback } from '@/shared/hooks/useDebouncedCallback';
-import type { Bbox } from '@/shared/lib/bbox';
+import { bboxCenter, type Bbox } from '@/shared/lib/bbox';
 import type { BoundsRect, Coordinate } from '@/shared/components/map/types';
 import { ErrorState } from '@/shared/components/ErrorState';
 import { usePetMapStore } from '../store/usePetMapStore';
@@ -97,20 +97,36 @@ export function MapExplorerPage() {
     setResolvedOrigin(userOrigin);
   }, [userOrigin, appliedFilters.location]);
 
-  // Query center follows, in priority order: an explicit search-modal location filter, then the
-  // user's real resolved location (once available — see the auto-center effect above), then the
-  // static fallback. Only the *initial* centering comes from userOrigin; once the user pans the
-  // map or searches explicitly, this stops moving on its own.
-  const queryCenter = appliedFilters.location?.coords ?? resolvedOrigin ?? FALLBACK_ORIGIN;
+  const lastViewedBbox = usePetMapStore((state) => state.lastViewedBbox);
+  const setLastViewedBbox = usePetMapStore((state) => state.setLastViewedBbox);
+  const clearLastViewedBbox = usePetMapStore((state) => state.clearLastViewedBbox);
+
+  // Query center follows, in priority order: an explicit search-modal location filter, then
+  // wherever the user last panned the map to (persisted in usePetMapStore, so it survives this
+  // page unmounting for a pet-detail visit or the feed<->map toggle — see lastViewedBbox's own
+  // doc comment), then the user's real resolved location (once available — see the auto-center
+  // effect above), then the static fallback. Only the *initial* centering comes from userOrigin;
+  // once the user pans the map or searches explicitly, this stops moving on its own.
+  const queryCenter =
+    appliedFilters.location?.coords ?? (lastViewedBbox && bboxCenter(lastViewedBbox)) ?? resolvedOrigin ?? FALLBACK_ORIGIN;
 
   // Dual-query architecture (CLAUDE.md): the map's pins (lightweight, unpaginated, drives
   // clustering) and the drawer's cards (heavy DTO, cursor-paginated) are two independent
   // bbox-keyed queries against two different endpoints, not one query feeding both — this is
   // what lets the drawer scroll/paginate without ever re-fetching or re-rendering the map's pins.
-  const [bbox, setBbox] = useState<Bbox>(() => deriveInitialBbox(queryCenter));
-  const handleBoundsChange = useDebouncedCallback((bounds: BoundsRect) => setBbox(bounds), BBOX_DEBOUNCE_MS);
+  // Mirrors queryCenter's own priority: an explicit search filter must win over a stale
+  // remembered bbox (e.g. PetDetailPage's "see on map" sets appliedFilters.location to a specific
+  // pet's coords — without this gating, the map would visually center there but still fetch
+  // pins/results against the old bbox for one render).
+  const [bbox, setBbox] = useState<Bbox>(
+    () => (appliedFilters.location ? null : lastViewedBbox) ?? deriveInitialBbox(queryCenter),
+  );
+  const handleBoundsChange = useDebouncedCallback((bounds: BoundsRect) => {
+    setBbox(bounds);
+    setLastViewedBbox(bounds);
+  }, BBOX_DEBOUNCE_MS);
 
-  const { data: pins = [] } = useMapPins(bbox, appliedFilters.petType);
+  const { data: pins = [] } = useMapPins({ mode: 'bbox', bbox }, appliedFilters.petType);
   const {
     data: feedData,
     fetchNextPage,
@@ -164,8 +180,17 @@ export function MapExplorerPage() {
   const resultsHeadline = appliedFilters.petType
     ? `${PET_TYPE_LABELS_PLURAL[appliedFilters.petType]} w okolicy`
     : 'Zwierzęta w okolicy';
+  // For a GPS-sourced filter (the user's own resolving location, see LocationFilter's `source`
+  // doc comment), prefer the live origin's city over the label frozen at search-confirm time —
+  // the city name can still resolve after that snapshot was taken (useAppLocation.ts's
+  // gpsLabelQuery lags the coordinate fix by one extra network round trip), and without this the
+  // header stays stuck on whatever generic/partial label was current at that moment.
+  const locationLabel =
+    appliedFilters.location?.source === 'gps'
+      ? (userOrigin.city ?? appliedFilters.location.label)
+      : appliedFilters.location?.label;
   const resultsSubline =
-    [appliedFilters.location?.label, appliedFilters.timeframe !== 'all' ? TIMEFRAME_LABELS[appliedFilters.timeframe] : null]
+    [locationLabel, appliedFilters.timeframe !== 'all' ? TIMEFRAME_LABELS[appliedFilters.timeframe] : null]
       .filter((part): part is string => Boolean(part))
       .join(' • ') || 'Cała okolica';
 
@@ -173,6 +198,7 @@ export function MapExplorerPage() {
     resetToMain();
     clearSelection();
     setSheetSnap('collapsed');
+    clearLastViewedBbox();
   };
 
   return (

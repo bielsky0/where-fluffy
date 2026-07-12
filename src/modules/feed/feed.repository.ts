@@ -42,7 +42,7 @@ export const createFeedRepository = (prisma: PrismaClient): FeedRepository => {
       : Prisma.sql`ST_Distance(location, ST_MakePoint(${lng}, ${lat})::geography) as "distanceMeters"`;
 
     const rows = await prisma.$queryRaw<RawFeedPetRow[]>`
-      SELECT id, name, species, status, category, reward, "createdAt", "isAdminAdded",
+      SELECT id, name, species, status, category, reward, "createdAt", "isAdminAdded", "photoUrls",
              ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng,
              ${distanceFragment}
       FROM "Pet"

@@ -62,6 +62,7 @@ export default function AppShell() {
   const setSheetSnap = usePetMapStore((state) => state.setSheetSnap);
   const openAddReport = usePetMapStore((state) => state.openAddReportModal);
   const closeAddReport = usePetMapStore((state) => state.closeAddReportModal);
+  const clearLastViewedBbox = usePetMapStore((state) => state.clearLastViewedBbox);
 
   const isBottomNavHidden = currentAppState === 'STATE_C' && sheetSnap === 'collapsed';
 
@@ -85,6 +86,7 @@ export default function AppShell() {
       resetToMain();
       clearSelection();
       setSheetSnap('collapsed');
+      clearLastViewedBbox();
     } else if (action === 'report') {
       openAddReport();
     } else if (action === 'profile') {

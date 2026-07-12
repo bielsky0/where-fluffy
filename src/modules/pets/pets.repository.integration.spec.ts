@@ -286,14 +286,17 @@ describe('createPetRepository (integration)', () => {
     // — wystarczające, by rozróżnić "podobny"/"niepodobny" embedding w testach bez prawdziwego AI.
     const unitVector = (axis: number): number[] => Array.from({ length: 768 }, (_, i) => (i === axis ? 1 : 0));
 
+    // Kandydaci muszą mieć status przeciwny do source (cross-matching missing<->found, patrz
+    // komentarz nad findSimilar w pets.repository.ts) — domyślnie source jest 'missing', więc
+    // kandydaci domyślnie są 'found', chyba że test jawnie nadpisze.
     const saveWithEmbedding = async (overrides: Partial<CreatePetRecordDTO>, embeddingAxis: number) => {
-      const pet = await repository.save(buildCreateDto(overrides));
+      const pet = await repository.save(buildCreateDto({ status: 'found', ...overrides }));
       await repository.updateEmbedding(pet.id, unitVector(embeddingAxis));
       return pet;
     };
 
     it('ranks a near, embedding-similar candidate first', async () => {
-      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
       const similarNear = await saveWithEmbedding({ location: NEAR }, 0);
       const dissimilarNear = await saveWithEmbedding({ location: NEAR }, 1);
 
@@ -303,7 +306,7 @@ describe('createPetRepository (integration)', () => {
     });
 
     it('excludes the source pet itself', async () => {
-      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
 
       const results = await repository.findSimilar(source.id, 5000, 4);
 
@@ -311,7 +314,7 @@ describe('createPetRepository (integration)', () => {
     });
 
     it('excludes candidates outside the radius, even with an identical embedding', async () => {
-      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
       await saveWithEmbedding({ location: FAR }, 0);
 
       const results = await repository.findSimilar(source.id, 5000, 4);
@@ -319,9 +322,9 @@ describe('createPetRepository (integration)', () => {
       expect(results).toEqual([]);
     });
 
-    it('excludes candidates whose status is not "missing"', async () => {
-      const source = await saveWithEmbedding({ location: CENTER }, 0);
-      const candidate = await repository.save(buildCreateDto({ location: NEAR, status: 'found' }));
+    it('excludes candidates with the same status as the source ("missing" source)', async () => {
+      const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
+      const candidate = await repository.save(buildCreateDto({ location: NEAR, status: 'missing' }));
       await repository.updateEmbedding(candidate.id, unitVector(0));
 
       const results = await repository.findSimilar(source.id, 5000, 4);
@@ -329,9 +332,19 @@ describe('createPetRepository (integration)', () => {
       expect(results).toEqual([]);
     });
 
+    it('matches "missing" candidates for a "found" source (reverse direction)', async () => {
+      const source = await saveWithEmbedding({ location: CENTER, status: 'found' }, 0);
+      const candidate = await repository.save(buildCreateDto({ location: NEAR, status: 'missing' }));
+      await repository.updateEmbedding(candidate.id, unitVector(0));
+
+      const results = await repository.findSimilar(source.id, 5000, 4);
+
+      expect(results.map((p) => p.id)).toEqual([candidate.id]);
+    });
+
     it('excludes candidates without an embedding yet', async () => {
-      const source = await saveWithEmbedding({ location: CENTER }, 0);
-      await repository.save(buildCreateDto({ location: NEAR })); // never calls updateEmbedding
+      const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
+      await repository.save(buildCreateDto({ location: NEAR, status: 'found' })); // never calls updateEmbedding
 
       const results = await repository.findSimilar(source.id, 5000, 4);
 
@@ -339,7 +352,7 @@ describe('createPetRepository (integration)', () => {
     });
 
     it('returns distanceMeters computed relative to the source pet', async () => {
-      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
       await saveWithEmbedding({ location: NEAR }, 0); // ~100m north of CENTER
 
       const [result] = await repository.findSimilar(source.id, 5000, 4);
@@ -349,7 +362,7 @@ describe('createPetRepository (integration)', () => {
     });
 
     it('respects the limit even when more candidates qualify', async () => {
-      const source = await saveWithEmbedding({ location: CENTER }, 0);
+      const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
       for (let i = 0; i < 5; i += 1) {
         await saveWithEmbedding({ location: NEAR }, 0);
       }

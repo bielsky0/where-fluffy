@@ -4,12 +4,12 @@ import type { TimeframeFilter } from '@/modules/pets/lib/timeframe';
 import type { PublicPetStatus } from '@/modules/pets/types/pet.types';
 
 export type AppState = 'STATE_A' | 'STATE_B' | 'STATE_C';
-// Which screen the search modal's stack navigation is currently showing. 'root' is the Root
-// Modal (status control + 3 state-strip rows); the other three are full-screen drill-downs that
-// slide in over it (SearchModal.tsx's stack nav, replacing the old in-place accordion morph).
-// Only one level of nesting exists — a drill-down never opens a further drill-down — so a plain
-// union is enough, no generic screen-stack data structure is needed.
-export type ModalScreen = 'root' | 'petType' | 'location' | 'timeframe';
+// Which of the search modal's three accordion steps is currently expanded (SearchModal.tsx).
+// Exactly one is always expanded — there's no 'root'/none state the way stack nav's root screen
+// used to have — picking a collapsed pill just changes which step is expanded, and picking a
+// value inside a step auto-advances this to the next one (see setDraftPetType/selectDraftLocation
+// below); only timeframe (the last step) leaves it untouched after a pick.
+export type AccordionStep = 'petType' | 'location' | 'timeframe';
 // The app's top-level view, one level above AppState: 'feed' is MainFeedPage (no map mounted
 // at all — see AppShell.tsx); 'map' is the pre-existing STATE_A/B/C map+drawer stack. Only
 // 'map' ever mounts <MapView/>, so switching back to 'feed' unmounts it (deliberate — see
@@ -31,6 +31,14 @@ export interface LocationFilter {
   // Photon didn't return an extent for. Optional consumption hook for the map explorer to seed
   // its initial viewport from a geocoded area; not required to be read anywhere yet.
   bbox: { minLng: number; minLat: number; maxLng: number; maxLat: number } | null;
+  // Set only when this filter's location is genuinely "the user's own resolving location" (the
+  // location step's GPS row, or the landing Hero's own-location search) — left undefined for a
+  // manually-picked Photon result or a specific pet's location (PetDetailPage), where the label
+  // is a deliberate, unchanging choice. Lets MapExplorerPage's header prefer the live, still-
+  // resolving city name over this filter's own frozen `label` once it catches up (see
+  // MapExplorerPage.tsx's resultsSubline) — without it, a header captured before the async city
+  // lookup finishes stays stuck on a stale/generic label forever, even after the real one arrives.
+  source?: 'gps';
 }
 
 export interface AppliedFilters {
@@ -50,7 +58,7 @@ const EMPTY_FILTERS: AppliedFilters = { status: null, petType: null, location: n
 interface AppUIState {
   activeView: ActiveView;
   currentAppState: AppState;
-  modalScreen: ModalScreen;
+  expandedStep: AccordionStep;
   // "Draft" mirrors the wizard's in-progress choices; nothing here affects the map/results
   // until applyFilters() copies it into appliedFilters — so STATE_B can be backed out of
   // (closeSearch) without side effects on STATE_A/STATE_C. draftStatus has no "unset" value
@@ -70,8 +78,7 @@ interface AppUIState {
 
   openSearch: () => void;
   closeSearch: () => void;
-  openDrilldown: (screen: Exclude<ModalScreen, 'root'>) => void;
-  closeDrilldown: () => void;
+  expandStep: (step: AccordionStep) => void;
   setDraftStatus: (status: PublicPetStatus | 'both') => void;
   setDraftPetType: (petType: PetTypeFilter) => void;
   setDraftLocation: (location: LocationFilter | null) => void;
@@ -82,7 +89,7 @@ interface AppUIState {
   showAllResults: () => void;
   resetToMain: () => void;
   showProfile: () => void;
-  openMapAt: (location: LocationFilter) => void;
+  openMapAt: (location: LocationFilter, status?: PublicPetStatus | null) => void;
 }
 
 // Drives the three top-level screen states described in AppShell.tsx (STATE_A: main map view,
@@ -95,7 +102,7 @@ interface AppUIState {
 export const useAppUIStore = create<AppUIState>((set, get) => ({
   activeView: 'feed',
   currentAppState: 'STATE_A',
-  modalScreen: 'root',
+  expandedStep: 'petType',
   draftStatus: 'missing',
   draftPetType: null,
   draftLocation: null,
@@ -108,7 +115,10 @@ export const useAppUIStore = create<AppUIState>((set, get) => ({
     set({
       activeView: 'map',
       currentAppState: 'STATE_B',
-      modalScreen: 'root',
+      // Always reopen on the first step — the collapsed pills already show each step's current
+      // value at a glance, so there's no discoverability benefit to "smart resume on the first
+      // empty step" logic, only extra state-shape complexity.
+      expandedStep: 'petType',
       // Reopening from STATE_C (e.g. tapping the results search bar to adjust filters) seeds
       // the wizard with whatever's currently applied, so editing doesn't start from scratch.
       // appliedFilters.status's "show both" null becomes the draft's own concrete 'both' segment.
@@ -125,47 +135,35 @@ export const useAppUIStore = create<AppUIState>((set, get) => ({
     set({
       activeView: preSearchState?.activeView ?? 'feed',
       currentAppState: preSearchState?.currentAppState ?? 'STATE_A',
-      modalScreen: 'root',
+      expandedStep: 'petType',
       preSearchState: null,
     });
   },
 
-  openDrilldown: (screen) => set({ modalScreen: screen }),
-
-  closeDrilldown: () => set({ modalScreen: 'root' }),
+  expandStep: (step) => set({ expandedStep: step }),
 
   setDraftStatus: (status) => set({ draftStatus: status }),
 
-  setDraftPetType: (petType) =>
-    set((state) => ({
-      draftPetType: petType,
-      // Picking a type is a committed choice — pop back to root so a one-tap "just show me
-      // cats" search doesn't require also manually backing out of the drill-down.
-      modalScreen: state.modalScreen === 'petType' ? 'root' : state.modalScreen,
-    })),
+  // Picking a type auto-advances the accordion to the next step (Airbnb's own behavior) — the
+  // old stack-nav guard (only pop back if this drill-down was the one open) is unreachable now
+  // that these rows only render while petType is already the expanded step.
+  setDraftPetType: (petType) => set({ draftPetType: petType, expandedStep: 'location' }),
 
   setDraftLocation: (location) => set({ draftLocation: location }),
 
   // Distinct from setDraftLocation: only a real commit (a tapped Photon result or the "W
-  // pobliżu" GPS row) counts as a choice that should pop back to root — free-typed text
+  // pobliżu" GPS row) counts as a choice that should auto-advance — free-typed text
   // (setDraftLocation, wired to the input's onChange) still updates the draft on every
-  // keystroke but must never yank the user out of the drill-down mid-type.
-  selectDraftLocation: (location) =>
-    set((state) => ({
-      draftLocation: location,
-      modalScreen: state.modalScreen === 'location' ? 'root' : state.modalScreen,
-    })),
+  // keystroke but must never yank the user out of the location step mid-type.
+  selectDraftLocation: (location) => set({ draftLocation: location, expandedStep: 'timeframe' }),
 
-  setDraftTimeframe: (timeframe) =>
-    set((state) => ({
-      draftTimeframe: timeframe,
-      // Pop back to root on commit, same as pet-type/location, for a consistent "pick one,
-      // land back on root" feel across all three drill-downs.
-      modalScreen: state.modalScreen === 'timeframe' ? 'root' : state.modalScreen,
-    })),
+  // Timeframe is the accordion's last step — unlike petType/location, picking a value here has
+  // nothing further to auto-advance to, so expandedStep is left untouched (the card stays open,
+  // showing the choice highlighted, until the user taps a different collapsed pill or Szukaj).
+  setDraftTimeframe: (timeframe) => set({ draftTimeframe: timeframe }),
 
   // "Wyczyść wszystko" in the footer — resets the draft back to its opening defaults and
-  // returns to the root screen, but deliberately stays inside STATE_B (unlike closeSearch),
+  // re-expands the first step, but deliberately stays inside STATE_B (unlike closeSearch),
   // since clearing reads as "start this search over", not "cancel it".
   clearDraftFilters: () =>
     set({
@@ -173,7 +171,7 @@ export const useAppUIStore = create<AppUIState>((set, get) => ({
       draftPetType: null,
       draftLocation: null,
       draftTimeframe: 'all',
-      modalScreen: 'root',
+      expandedStep: 'petType',
     }),
 
   applyFilters: () => {
@@ -208,9 +206,11 @@ export const useAppUIStore = create<AppUIState>((set, get) => ({
 
   showProfile: () => set({ activeView: 'profile' }),
 
-  // Entry point for "open the full map centered on this one pet" (e.g. PetDetailPage's
-  // mini-map tap) — lands straight on STATE_C (results view) with a single-location filter
-  // applied, same shape as applyFilters()'s result but skipping the wizard entirely.
-  openMapAt: (location) =>
-    set({ activeView: 'map', currentAppState: 'STATE_C', appliedFilters: { ...EMPTY_FILTERS, location } }),
+  // Entry point for "open the full map centered on this one pet/location" (e.g. PetDetailPage's
+  // mini-map tap, or the public landing Hero's search overlay) — lands straight on STATE_C
+  // (results view) with a location (and optionally status) filter applied, same shape as
+  // applyFilters()'s result but skipping the wizard entirely. `status` defaults to null ("both")
+  // so PetDetailPage's existing single-arg call is unaffected.
+  openMapAt: (location, status = null) =>
+    set({ activeView: 'map', currentAppState: 'STATE_C', appliedFilters: { ...EMPTY_FILTERS, location, status } }),
 }));

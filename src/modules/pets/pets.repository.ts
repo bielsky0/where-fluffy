@@ -139,19 +139,25 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     return pet ? mapToDomain(pet) : null;
   };
 
-  // "Podobne zwierzęta w okolicy": CTE `source` czyta location+embedding zwierzaka o id=petId, a
-  // główne zapytanie łączy podobieństwo kosinusowe (embedding <=> source.embedding, wykorzystuje
-  // istniejący indeks HNSW Pet_embedding_idx) z filtrem geograficznym (ST_DWithin, wykorzystuje
-  // istniejący indeks GiST na location) wokół tego samego punktu źródłowego. CROSS JOIN source
-  // sprawia, że każdy przypadek brzegowy zwraca po prostu 0 wierszy zamiast wymagać osobnej
-  // gałęzi w JS: petId nie istnieje -> source ma 0 wierszy -> CROSS JOIN daje 0; source.embedding
-  // lub source.location jest NULL (zwierzak jeszcze nieprzetworzony przez ai-worker albo,
-  // teoretycznie, bez lokalizacji) -> odfiltrowane explicit warunkami; brak kandydatów w
-  // promieniu/statusie -> naturalne 0 wierszy.
+  // "Podobne zwierzęta w okolicy": CTE `source` czyta location+embedding+status zwierzaka o
+  // id=petId, a główne zapytanie łączy podobieństwo kosinusowe (embedding <=> source.embedding,
+  // wykorzystuje istniejący indeks HNSW Pet_embedding_idx) z filtrem geograficznym (ST_DWithin,
+  // wykorzystuje istniejący indeks GiST na location) wokół tego samego punktu źródłowego. Status
+  // kandydata musi być *przeciwny* do statusu source — to jest cross-matching zgłoszeń
+  // "zaginiony" (missing) ze zgłoszeniami "widziany" (found), a nie lista podobnych zaginięć: dla
+  // source.status = 'missing' pokazujemy okoliczne 'found' (może ktoś już go widział), a dla
+  // source.status = 'found' pokazujemy okoliczne 'missing' (może to czyjś zaginiony pupil).
+  // 'paused'/'resolved' nie mają odpowiednika (CASE -> NULL, `p.status = NULL` nigdy nie jest
+  // prawdą) — te statusy oznaczają zamknięte zgłoszenie, więc świadomie 0 wierszy. CROSS JOIN
+  // source sprawia, że każdy przypadek brzegowy zwraca po prostu 0 wierszy zamiast wymagać
+  // osobnej gałęzi w JS: petId nie istnieje -> source ma 0 wierszy -> CROSS JOIN daje 0;
+  // source.embedding lub source.location jest NULL (zwierzak jeszcze nieprzetworzony przez
+  // ai-worker albo, teoretycznie, bez lokalizacji) -> odfiltrowane explicit warunkami; brak
+  // kandydatów w promieniu/statusie -> naturalne 0 wierszy.
   const findSimilar: PetRepository['findSimilar'] = async (petId, radiusInMeters, limit) => {
     const rows = await prisma.$queryRaw<RawSimilarPetRow[]>`
       WITH source AS (
-        SELECT location, embedding FROM "Pet" WHERE id = ${petId}
+        SELECT location, embedding, status FROM "Pet" WHERE id = ${petId}
       )
       SELECT p.id, p.name, p.species, p.status, p.category, p.reward, p.phone, p.email,
              p."distinguishingMarks", p."photoUrl", p."photoUrls", p.city,
@@ -162,7 +168,7 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
       FROM "Pet" p
       CROSS JOIN source
       WHERE p.id != ${petId}
-        AND p.status = 'missing'
+        AND p.status = CASE source.status WHEN 'missing' THEN 'found' WHEN 'found' THEN 'missing' END
         AND p.embedding IS NOT NULL
         AND source.embedding IS NOT NULL
         AND source.location IS NOT NULL

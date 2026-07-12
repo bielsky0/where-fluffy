@@ -12,12 +12,6 @@ interface PetDetailPanelProps {
   onClose: () => void;
 }
 
-// No photo field exists on PetResponseDTO yet (see pet.types.ts, and PetCard.tsx's own
-// PetImage/gallery-dot precedent for the same gap) — one real slide, not several fabricated
-// ones. The scroll-snap slider and its dot row below are still the genuine mechanism (functional
-// for N slides), just fed by real data that today happens to total one.
-const HERO_SLIDES = [0];
-
 function HeroMonogram({ pet }: { pet: Pet }) {
   return (
     <div
@@ -93,6 +87,8 @@ export function PetDetailPanel({ pet, origin, onClose }: PetDetailPanelProps) {
   const [favorited, setFavorited] = useState(false);
 
   const distance = formatDistance(distanceMeters(origin, pet.location));
+  const photos = pet.photoUrls;
+  const slideCount = photos.length > 0 ? photos.length : 1;
 
   const handleSlideScroll = (event: UIEvent<HTMLDivElement>) => {
     const { scrollLeft, clientWidth } = event.currentTarget;
@@ -118,24 +114,32 @@ export function PetDetailPanel({ pet, origin, onClose }: PetDetailPanelProps) {
           onScroll={handleSlideScroll}
           className="flex size-full snap-x snap-mandatory overflow-x-auto scroll-smooth overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          {HERO_SLIDES.map((slide) => (
-            <div key={slide} className="size-full shrink-0 snap-center">
+          {photos.length > 0 ? (
+            photos.map((url) => (
+              <div key={url} className="size-full shrink-0 snap-center">
+                <img src={url} alt="" aria-hidden="true" className="size-full object-cover" />
+              </div>
+            ))
+          ) : (
+            <div className="size-full shrink-0 snap-center">
               <HeroMonogram pet={pet} />
             </div>
-          ))}
+          )}
         </div>
 
-        <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5" aria-hidden="true">
-          {HERO_SLIDES.map((slide) => (
-            <span
-              key={slide}
-              className={cn(
-                'h-1.5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.45)] transition-all duration-200',
-                slide === activeSlide ? 'w-4' : 'w-1.5 opacity-70',
-              )}
-            />
-          ))}
-        </div>
+        {slideCount > 1 && (
+          <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5" aria-hidden="true">
+            {Array.from({ length: slideCount }, (_, index) => (
+              <span
+                key={index}
+                className={cn(
+                  'h-1.5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.45)] transition-all duration-200',
+                  index === activeSlide ? 'w-4' : 'w-1.5 opacity-70',
+                )}
+              />
+            ))}
+          </div>
+        )}
 
         <span
           className={cn(

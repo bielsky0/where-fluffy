@@ -6,7 +6,7 @@ import { useLogout } from '@/modules/auth/api/useAuth';
 import { useAppUIStore } from '@/modules/app/store/useAppUIStore';
 import type { Pet } from '@/modules/pets/types/pet.types';
 import { INITIAL_HELPED_COUNT, MOCK_ACCOUNT_CREATED_AT, getAccountAgeStat } from '../lib/mockProfileData';
-import { useCountUp } from '../lib/useCountUp';
+import { useCountUp } from '@/shared/lib/useCountUp';
 import { mapPetToListing } from '../lib/mapPetToListing';
 import { generateShareImage } from '../lib/generateShareImage';
 import { shareOrDownloadImage } from '../lib/shareImage';

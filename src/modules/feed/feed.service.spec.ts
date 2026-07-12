@@ -37,6 +37,7 @@ const buildFeedPet = (overrides: Partial<IFeedPet> = {}): IFeedPet => ({
   distanceMeters: 120,
   isAdminAdded: false,
   createdAt: new Date('2026-01-01T10:00:00.000Z'),
+  photoUrls: [],
   ...overrides,
 });
 

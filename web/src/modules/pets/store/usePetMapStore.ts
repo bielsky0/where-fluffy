@@ -1,15 +1,24 @@
 import { create } from 'zustand';
+import type { Bbox } from '@/shared/lib/bbox';
 import type { DrawerSnap } from '../types/mapUi.types';
 
 interface PetMapState {
   selectedPetId: string | null;
   sheetSnap: DrawerSnap;
   isAddReportModalOpen: boolean;
+  // The viewport bbox from the last `moveend` the map explorer saw — survives
+  // MapExplorerPage/Leaflet unmount (pet-detail nav, feed<->map toggle) since this store, unlike
+  // component-local useState, is a module-level singleton. See MapExplorerPage.tsx's queryCenter
+  // and bbox init for how this restores "where the user last was" instead of resetting to
+  // GPS/fallback on remount.
+  lastViewedBbox: Bbox | null;
   selectPet: (petId: string) => void;
   clearSelection: () => void;
   setSheetSnap: (snap: DrawerSnap) => void;
   openAddReportModal: () => void;
   closeAddReportModal: () => void;
+  setLastViewedBbox: (bbox: Bbox) => void;
+  clearLastViewedBbox: () => void;
 }
 
 // UI-only state for the map + results-drawer shell (AppShell.tsx's STATE_C) — which pet is
@@ -21,6 +30,7 @@ export const usePetMapStore = create<PetMapState>((set) => ({
   selectedPetId: null,
   sheetSnap: 'collapsed',
   isAddReportModalOpen: false,
+  lastViewedBbox: null,
   selectPet: (petId) =>
     set((state) => ({
       selectedPetId: petId,
@@ -32,4 +42,6 @@ export const usePetMapStore = create<PetMapState>((set) => ({
   setSheetSnap: (snap) => set({ sheetSnap: snap }),
   openAddReportModal: () => set({ isAddReportModalOpen: true }),
   closeAddReportModal: () => set({ isAddReportModalOpen: false }),
+  setLastViewedBbox: (bbox) => set({ lastViewedBbox: bbox }),
+  clearLastViewedBbox: () => set({ lastViewedBbox: null }),
 }));

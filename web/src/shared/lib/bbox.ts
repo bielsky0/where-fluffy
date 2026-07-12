@@ -23,3 +23,10 @@ export function roundBbox(bbox: Bbox, precision = 5): Bbox {
 export function bboxToQueryValue(bbox: Bbox): string {
   return `${bbox.minLng},${bbox.minLat},${bbox.maxLng},${bbox.maxLat}`;
 }
+
+// Inline `{ lat, lng }` return shape rather than importing `Coordinate` from
+// shared/components/map/types.ts — that file deliberately stays decoupled from this one (see its
+// own BoundsRect comment); structural typing already makes this assignable at every call site.
+export function bboxCenter(bbox: Bbox): { lat: number; lng: number } {
+  return { lat: (bbox.minLat + bbox.maxLat) / 2, lng: (bbox.minLng + bbox.maxLng) / 2 };
+}

@@ -6,6 +6,8 @@
 // Add one line here per component folder as the library grows — shadcn's own CLI
 // (`npx shadcn add <component>`, see components.json) writes new components straight into
 // this directory; the only manual step left is re-exporting them here.
+export * from './accordion';
 export * from './button';
+export * from './card';
 export * from './layout';
 export * from './theme-toggle';

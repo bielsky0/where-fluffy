@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { Card } from '@/shared/ui';
 import { CheckIcon, ShieldIcon } from './icons';
 
 const FEATURES = [
@@ -13,7 +14,7 @@ const FEATURES = [
 export function SmartAlertSection() {
   return (
     <section className="bg-surface px-6 py-20">
-      <div className="flex flex-col gap-8 rounded-2xl bg-ink p-8 text-white shadow-lg">
+      <Card variant="dark" className="flex flex-col gap-8 p-8">
         <motion.span
           className="flex size-14 items-center justify-center rounded-2xl bg-white/10 text-coral"
           animate={{ scale: [1, 1.05, 1] }}
@@ -32,7 +33,7 @@ export function SmartAlertSection() {
             </li>
           ))}
         </ul>
-      </div>
+      </Card>
     </section>
   );
 }

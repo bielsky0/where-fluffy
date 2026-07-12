@@ -4,6 +4,7 @@ import { PillarsSection } from '../components/PillarsSection';
 import { SmartAlertSection } from '../components/SmartAlertSection';
 import { ShowcaseSection } from '../components/ShowcaseSection';
 import { FaqSection } from '../components/FaqSection';
+import { Footer } from '../components/Footer';
 
 // Public marketing entry point — only imports react-router-dom (already shared by every
 // route), framer-motion (a plain peer dependency), and its own section components. Must never
@@ -11,14 +12,16 @@ import { FaqSection } from '../components/FaqSection';
 // socket.io-client, and Zustand, and this bundle is what unauthenticated visitors download first.
 export default function LandingPage() {
   const navigate = useNavigate();
+  const goToApp = () => navigate('/app');
 
   return (
     <main className="flex flex-col bg-white">
-      <Hero onGetStarted={() => navigate('/app')} />
+      <Hero onGetStarted={goToApp} />
       <PillarsSection />
       <SmartAlertSection />
       <ShowcaseSection />
       <FaqSection />
+      <Footer onAddListing={goToApp} />
     </main>
   );
 }

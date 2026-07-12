@@ -31,6 +31,15 @@ services:
       # DEPLOY.md). Without this, pgbouncer never receives a single connection: it's still
       # listening on 5432 internally while everything else dials 6432.
       LISTEN_PORT: "6432"
+      # Postgres 16 (this repo's infra/db image) defaults password_encryption to scram-sha-256,
+      # but edoburu/pgbouncer's own entrypoint defaults AUTH_TYPE to "md5" when unset — it then
+      # stores an MD5 digest in userlist.txt, which cannot complete a SCRAM handshake against the
+      # real backend. Result was pgbouncer's own upstream connection to `db` rejected with
+      # "FATAL: server login failed: wrong password type", even with fully correct credentials.
+      # Setting this makes the entrypoint store DB_PASSWORD verbatim instead of MD5-hashing it,
+      # and sets auth_type = scram-sha-256 in pgbouncer.ini, so it can do real SCRAM both ways
+      # (authenticating incoming clients and connecting upstream to `db`).
+      AUTH_TYPE: "scram-sha-256"
     ports:
       - "6432:6432"
     depends_on:

@@ -1,6 +1,3 @@
-import { Button } from '@/shared/ui';
-import { PlusIcon } from './icons';
-
 // Height reserved for the fixed "+ Dodaj ogłoszenie" bar below (excluding the safe-area inset,
 // added separately via pb-safe on the bar itself) — applied as the footer's own trailing
 // padding so its last row never sits hidden underneath the bar. Same pattern as BottomNav.tsx's

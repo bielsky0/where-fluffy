@@ -1,0 +1,12 @@
+# Wersje transformers/sentence-transformers przypięte wąsko: kod trust_remote_code modeli nomic
+# v1.5 bywa łamany przez nowe major/minor wydania transformers — aktualizować świadomie, z testem
+# end-to-end (patrz sekcja Weryfikacja w planie), nie automatycznie.
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+httpx>=0.28,<1
+pillow>=10,<12
+torch>=2.6,<2.7
+transformers>=4.49,<4.50
+sentence-transformers>=3.4,<4
+einops>=0.8,<0.9
+pytest>=8,<9

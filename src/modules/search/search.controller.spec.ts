@@ -28,7 +28,7 @@ describe('search controller (via supertest)', () => {
 
   beforeEach(() => {
     mockSearchRepository = { findSimilar: jest.fn() };
-    mockEmbeddingProvider = { generateEmbedding: jest.fn() };
+    mockEmbeddingProvider = { generateEmbedding: jest.fn(), generateImageEmbedding: jest.fn() };
     app = buildTestApp(createSearchService(mockSearchRepository, mockEmbeddingProvider));
   });
 

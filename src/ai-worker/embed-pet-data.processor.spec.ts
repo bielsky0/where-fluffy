@@ -16,8 +16,8 @@ const buildPet = (overrides: Partial<IPet> = {}): IPet => ({
   phone: null,
   email: null,
   distinguishingMarks: 'Biała łatka na łapie',
-  photoUrl: null,
-  photoUrls: [],
+  photoUrl: 'https://res.cloudinary.com/demo/pets/rex.webp',
+  photoUrls: ['https://res.cloudinary.com/demo/pets/rex.webp'],
   city: null,
   sourceUrl: null,
   originalContact: null,
@@ -40,39 +40,72 @@ describe('createEmbedPetDataProcessor', () => {
       save: jest.fn(),
       findNearLocation: jest.fn(),
       updateEmbedding: jest.fn(),
+      clearEmbedding: jest.fn(),
       findByOwnerId: jest.fn(),
       update: jest.fn(),
       updateStatus: jest.fn(),
       deleteById: jest.fn(),
       findSimilar: jest.fn(),
     };
-    mockEmbeddingProvider = { generateEmbedding: jest.fn() };
+    mockEmbeddingProvider = { generateEmbedding: jest.fn(), generateImageEmbedding: jest.fn() };
     logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown as Logger;
   });
 
-  it('builds the embedding input from name/species/category/distinguishingMarks and writes the resulting vector', async () => {
-    mockPetRepository.findById.mockResolvedValue(buildPet());
-    mockEmbeddingProvider.generateEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
+  it('embeds the pet photos (vision-only) and writes the resulting vector', async () => {
+    const photoUrls = [
+      'https://res.cloudinary.com/demo/pets/rex-1.webp',
+      'https://res.cloudinary.com/demo/pets/rex-2.webp',
+    ];
+    mockPetRepository.findById.mockResolvedValue(buildPet({ photoUrls }));
+    mockEmbeddingProvider.generateImageEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
     mockPetRepository.updateEmbedding.mockResolvedValue('updated');
 
     const process = createEmbedPetDataProcessor(mockPetRepository, mockEmbeddingProvider, logger);
     await process(buildJob('pet-1'));
 
-    expect(mockEmbeddingProvider.generateEmbedding).toHaveBeenCalledWith(
-      'Rex. dog. dog. Biała łatka na łapie',
-    );
+    expect(mockEmbeddingProvider.generateImageEmbedding).toHaveBeenCalledWith(photoUrls);
+    // Pola tekstowe celowo NIE wchodzą do embeddingu — pipeline jest vision-only.
+    expect(mockEmbeddingProvider.generateEmbedding).not.toHaveBeenCalled();
     expect(mockPetRepository.updateEmbedding).toHaveBeenCalledWith('pet-1', [0.1, 0.2, 0.3]);
   });
 
-  it('omits falsy fields (null name/distinguishingMarks) from the embedding input', async () => {
-    mockPetRepository.findById.mockResolvedValue(buildPet({ name: null, distinguishingMarks: null }));
-    mockEmbeddingProvider.generateEmbedding.mockResolvedValue([0.1]);
+  it('caps the embedded photos at the first 5', async () => {
+    const photoUrls = Array.from({ length: 7 }, (_, i) => `https://res.cloudinary.com/demo/pets/rex-${i}.webp`);
+    mockPetRepository.findById.mockResolvedValue(buildPet({ photoUrls }));
+    mockEmbeddingProvider.generateImageEmbedding.mockResolvedValue([0.1]);
     mockPetRepository.updateEmbedding.mockResolvedValue('updated');
 
     const process = createEmbedPetDataProcessor(mockPetRepository, mockEmbeddingProvider, logger);
     await process(buildJob('pet-1'));
 
-    expect(mockEmbeddingProvider.generateEmbedding).toHaveBeenCalledWith('dog. dog');
+    expect(mockEmbeddingProvider.generateImageEmbedding).toHaveBeenCalledWith(photoUrls.slice(0, 5));
+  });
+
+  it('falls back to the single photoUrl when photoUrls is empty', async () => {
+    mockPetRepository.findById.mockResolvedValue(
+      buildPet({ photoUrls: [], photoUrl: 'https://res.cloudinary.com/demo/pets/solo.webp' }),
+    );
+    mockEmbeddingProvider.generateImageEmbedding.mockResolvedValue([0.5]);
+    mockPetRepository.updateEmbedding.mockResolvedValue('updated');
+
+    const process = createEmbedPetDataProcessor(mockPetRepository, mockEmbeddingProvider, logger);
+    await process(buildJob('pet-1'));
+
+    expect(mockEmbeddingProvider.generateImageEmbedding).toHaveBeenCalledWith([
+      'https://res.cloudinary.com/demo/pets/solo.webp',
+    ]);
+  });
+
+  it('clears the embedding (instead of writing one) when the pet has no photos', async () => {
+    mockPetRepository.findById.mockResolvedValue(buildPet({ photoUrls: [], photoUrl: null }));
+    mockPetRepository.clearEmbedding.mockResolvedValue('updated');
+
+    const process = createEmbedPetDataProcessor(mockPetRepository, mockEmbeddingProvider, logger);
+    await expect(process(buildJob('pet-1'))).resolves.toBeUndefined();
+
+    expect(mockPetRepository.clearEmbedding).toHaveBeenCalledWith('pet-1');
+    expect(mockEmbeddingProvider.generateImageEmbedding).not.toHaveBeenCalled();
+    expect(mockPetRepository.updateEmbedding).not.toHaveBeenCalled();
   });
 
   it('skips silently (does not throw) when the pet no longer exists', async () => {
@@ -81,13 +114,14 @@ describe('createEmbedPetDataProcessor', () => {
     const process = createEmbedPetDataProcessor(mockPetRepository, mockEmbeddingProvider, logger);
     await expect(process(buildJob('missing-pet'))).resolves.toBeUndefined();
 
-    expect(mockEmbeddingProvider.generateEmbedding).not.toHaveBeenCalled();
+    expect(mockEmbeddingProvider.generateImageEmbedding).not.toHaveBeenCalled();
     expect(mockPetRepository.updateEmbedding).not.toHaveBeenCalled();
+    expect(mockPetRepository.clearEmbedding).not.toHaveBeenCalled();
   });
 
   it('propagates an embedding-provider error uncaught so BullMQ retries the job', async () => {
     mockPetRepository.findById.mockResolvedValue(buildPet());
-    mockEmbeddingProvider.generateEmbedding.mockRejectedValue(new Error('model unavailable'));
+    mockEmbeddingProvider.generateImageEmbedding.mockRejectedValue(new Error('model unavailable'));
 
     const process = createEmbedPetDataProcessor(mockPetRepository, mockEmbeddingProvider, logger);
 

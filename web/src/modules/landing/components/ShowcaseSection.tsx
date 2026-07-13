@@ -28,7 +28,7 @@ export function ShowcaseSection() {
         <h2 className="text-2xl font-bold text-ink">Twoje zgłoszenie prezentuje się na mapie</h2>
         <p className="text-sm text-subtle">
           Zdjęcia, lokalizacja i cechy szczególne są prezentowane automatycznie. Każdy, kto otworzy
-          mapę, zobaczy Twojego pupila.
+          mapę w Twojej okolicy, zobaczy Twojego pupila.
         </p>
       </div>
     </section>

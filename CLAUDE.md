@@ -204,6 +204,31 @@ when both `latitude`/`longitude` are present, else `NULL`), composed inside a `W
 (INSERT ... RETURNING ...)` CTE so the `INSERT ... RETURNING` and the `SELECT ... JOIN "User"`
 (for the author's name) happen in one round trip without ever selecting the raw `location` column.
 
+**Vector AI & Embedding Pipeline (vision-only)**: `Pet.embedding` (`vector(768)`, pgvector, HNSW
+index hand-written in a raw migration) is computed **exclusively from pet photos** — the first
+5 entries of `photoUrls` (fallback: single `photoUrl`); text fields (`name`/`species`/
+`distinguishingMarks`) do NOT feed the vector, and a pet with no photos gets its embedding
+cleared to `NULL` (`PetRepository.clearEmbedding`), never a stale one. The model server is a
+self-hosted FastAPI sidecar (`infra/ai-model/`, Compose service `ai-model`, port 8000) serving
+both aligned nomic v1.5 towers: `POST /embed/image` (nomic-embed-vision-v1.5; downloads the
+Cloudinary URLs itself with aggressive timeouts, embeds each, mean-pools + L2-normalizes into
+ONE vector) and `POST /embed/text` (nomic-embed-text-v1.5, `search_query: ` prefix added
+server-side) for the `search` module's query-time embedding — the shared 768-dim space is what
+makes a text query match photo vectors cross-modally. It **replaced Ollama** (whose embeddings
+API can't take images); don't reintroduce an `EMBEDDING_MODEL` env var, the model is the
+sidecar's own concern. All vector math (pooling, L2 norm) lives only in
+`infra/ai-model/vector_math.py` — Node never does vector arithmetic; the sidecar's own pytest
+suite (run during `docker build`, its only CI gate) pins the `||v|| == 1` contract. The sidecar
+runs a single Uvicorn process with an internal inference semaphore to stay under its 2G Compose
+memory limit — do not "scale" it with Gunicorn workers (each would duplicate both models in
+RAM). Write path: `pets.service.ts` enqueues `EMBED_PET_DATA` (BullMQ) on create and on
+photo-set changes only; `ai-worker` (second entrypoint of the `src/` image) consumes it via
+`embed-pet-data.processor.ts`. `EmbeddingProvider` (`shared/embedding/`) exposes
+`generateEmbedding(text)` + `generateImageEmbedding(urls)`; the `fake` provider (dev/CI default)
+hashes inputs deterministically so the whole pipeline runs without the sidecar.
+`src/scripts/backfill-embeddings.ts` re-enqueues every pet through the normal worker pipeline
+(used once for the text→vision migration; reusable after any embedding-affecting change).
+
 **Chat access control (Redis as the trust boundary)**: `chat.service.ts`'s `joinChatRoom` checks
 Postgres only once, when a socket sends `join_chat` — it verifies the user is the pet's owner or
 the given finder (via the injected `ChatRepository`), creates/reuses a `ChatRoom` row, then
@@ -308,8 +333,12 @@ not node-redis, so without this flag it silently uses the wrong command-dispatch
     `err.message` on `connect_error` (`io.use()`) or the local `'error'` event (`socket.use()`).
 
 **Docker Compose services**: `db` (postgis/postgis, port 5432), `pgbouncer` (port 6432, not
-currently referenced by `DATABASE_URL`), `redis` (port 6379), and `jaeger` (OTLP on 4317, UI on
-16686 — tracing is not yet wired into the app code).
+currently referenced by `DATABASE_URL`), `redis` (port 6379), `jaeger` (OTLP on 4317, UI on
+16686 — tracing is not yet wired into the app code), plus the embedding pipeline pair:
+`ai-model` (the FastAPI embedding sidecar described above, internal port 8000, 2G memory limit)
+and `ai-worker` (BullMQ consumer — second entrypoint of the same `src/` image as `api`, only the
+`command:` differs; its `depends_on` waits for `ai-model` to be healthy, while `api` deliberately
+does not, so semantic search degrades to 503 instead of blocking api startup).
 
 **Prisma Studio (DB admin GUI)**: `prisma-studio` service, gated behind the `admin` Compose
 profile — it does **not** start on a bare `docker compose up -d`. Start on demand:

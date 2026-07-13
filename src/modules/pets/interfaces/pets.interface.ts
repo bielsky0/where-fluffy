@@ -62,6 +62,9 @@ export type PetRepository = {
   // Zwraca 'not_found' zamiast rzucać, gdy zwierzak zniknął między enqueue a przetworzeniem
   // zadania (uzasadniony race, nie błąd) — patrz ai-worker/embed-pet-data.processor.ts.
   updateEmbedding: (petId: string, vector: number[]) => Promise<'updated' | 'not_found'>;
+  // Pipeline jest vision-only: zwierzak bez zdjęć nie może mieć embeddingu (worker czyści
+  // ewentualny stary wektor zamiast go zostawiać) — ten sam kontrakt 'not_found' co wyżej.
+  clearEmbedding: (petId: string) => Promise<'updated' | 'not_found'>;
   findByOwnerId: (ownerId: string) => Promise<IPet[]>;
   update: (petId: string, patch: PetUpdatePatch) => Promise<IPet | null>;
   updateStatus: (petId: string, status: IPet['status']) => Promise<IPet | null>;
@@ -69,6 +72,13 @@ export type PetRepository = {
   // Łączy podobieństwo embeddingu (cosine, <=>) z filtrem geograficznym (ST_DWithin) wokół
   // lokalizacji zwierzaka o id=petId — patrz pets.repository.ts's findSimilar dla pełnego SQL-a
   // i listy przypadków, które celowo zwracają [] zamiast rzucać (petId nie istnieje, brak
-  // embeddingu/lokalizacji źródła, zero trafień w promieniu).
-  findSimilar: (petId: string, radiusInMeters: number, limit: number) => Promise<ISimilarPet[]>;
+  // embeddingu/lokalizacji źródła, zero trafień w promieniu). `minSimilarity` dodatkowo odcina
+  // kandydatów zbyt różnych wizualnie (cosine similarity, nie surowy `<=>` distance) — wynik może
+  // więc być krótszy niż `limit` również z tego powodu.
+  findSimilar: (
+    petId: string,
+    radiusInMeters: number,
+    limit: number,
+    minSimilarity: number,
+  ) => Promise<ISimilarPet[]>;
 };

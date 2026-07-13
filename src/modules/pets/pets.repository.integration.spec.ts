@@ -280,11 +280,41 @@ describe('createPetRepository (integration)', () => {
     });
   });
 
+  describe('clearEmbedding', () => {
+    it('nulls out a previously written vector (vision-only: pet without photos loses its embedding)', async () => {
+      const pet = await repository.save(buildCreateDto());
+      await repository.updateEmbedding(pet.id, Array(768).fill(0.1));
+
+      const result = await repository.clearEmbedding(pet.id);
+
+      expect(result).toBe('updated');
+      const [row] = await prisma.$queryRaw<[{ embedding: string | null }]>`
+        SELECT embedding::text as embedding FROM "Pet" WHERE id = ${pet.id}
+      `;
+      expect(row.embedding).toBeNull();
+    });
+
+    it('returns "not_found" for an id that does not exist, without throwing', async () => {
+      const result = await repository.clearEmbedding(randomUUID());
+
+      expect(result).toBe('not_found');
+    });
+  });
+
   describe('findSimilar', () => {
     // 768-wymiarowy wektor jednostkowy w kierunku osi `axis` — cosine distance między dwoma
     // takimi wektorami jest 0 (identyczne) gdy `axis` jest takie samo, i 1 (ortogonalne) gdy różne
     // — wystarczające, by rozróżnić "podobny"/"niepodobny" embedding w testach bez prawdziwego AI.
     const unitVector = (axis: number): number[] => Array.from({ length: 768 }, (_, i) => (i === axis ? 1 : 0));
+
+    // Wektor jednostkowy o dokładnie zadanym cosine similarity względem unitVector(0) — z
+    // konstrukcji ma normę 1 (sim² + (1-sim²) = 1), więc dot product z osią 0 daje dokładnie
+    // `similarity`. Używany do testowania progu MIN_EMBEDDING_SIMILARITY (pets.service.ts), gdzie
+    // unitVector's dyskretne 0/1 nie wystarczą.
+    const vectorWithSimilarity = (similarity: number): number[] => {
+      const orthogonal = Math.sqrt(1 - similarity * similarity);
+      return [similarity, orthogonal, ...Array(766).fill(0)];
+    };
 
     // Kandydaci muszą mieć status przeciwny do source (cross-matching missing<->found, patrz
     // komentarz nad findSimilar w pets.repository.ts) — domyślnie source jest 'missing', więc
@@ -295,12 +325,21 @@ describe('createPetRepository (integration)', () => {
       return pet;
     };
 
+    // -1 jako minSimilarity w testach poniżej niezwiązanych z samym progiem: cosine similarity
+    // nigdy nie schodzi poniżej -1, więc to permisywna wartość "brak filtrowania", zachowująca
+    // zachowanie tych testów sprzed dodania progu (patrz dedykowane testy progu na końcu bloku).
+    const NO_SIMILARITY_FILTER = -1;
+
     it('ranks a near, embedding-similar candidate first', async () => {
       const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
       const similarNear = await saveWithEmbedding({ location: NEAR }, 0);
+      // Ortogonalny (cosine similarity 0) względem source — przy domyślnym progu produkcyjnym
+      // (0.8, patrz MIN_EMBEDDING_SIMILARITY) zostałby odfiltrowany; tu wywołujemy z
+      // NO_SIMILARITY_FILTER, żeby oba kandydaci wciąż się kwalifikowali i test mógł zweryfikować
+      // samą kolejność rankingu, niezależnie od progu.
       const dissimilarNear = await saveWithEmbedding({ location: NEAR }, 1);
 
-      const results = await repository.findSimilar(source.id, 5000, 4);
+      const results = await repository.findSimilar(source.id, 5000, 4, NO_SIMILARITY_FILTER);
 
       expect(results.map((p) => p.id)).toEqual([similarNear.id, dissimilarNear.id]);
     });
@@ -308,7 +347,7 @@ describe('createPetRepository (integration)', () => {
     it('excludes the source pet itself', async () => {
       const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
 
-      const results = await repository.findSimilar(source.id, 5000, 4);
+      const results = await repository.findSimilar(source.id, 5000, 4, NO_SIMILARITY_FILTER);
 
       expect(results.map((p) => p.id)).not.toContain(source.id);
     });
@@ -317,7 +356,7 @@ describe('createPetRepository (integration)', () => {
       const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
       await saveWithEmbedding({ location: FAR }, 0);
 
-      const results = await repository.findSimilar(source.id, 5000, 4);
+      const results = await repository.findSimilar(source.id, 5000, 4, NO_SIMILARITY_FILTER);
 
       expect(results).toEqual([]);
     });
@@ -327,7 +366,7 @@ describe('createPetRepository (integration)', () => {
       const candidate = await repository.save(buildCreateDto({ location: NEAR, status: 'missing' }));
       await repository.updateEmbedding(candidate.id, unitVector(0));
 
-      const results = await repository.findSimilar(source.id, 5000, 4);
+      const results = await repository.findSimilar(source.id, 5000, 4, NO_SIMILARITY_FILTER);
 
       expect(results).toEqual([]);
     });
@@ -337,7 +376,7 @@ describe('createPetRepository (integration)', () => {
       const candidate = await repository.save(buildCreateDto({ location: NEAR, status: 'missing' }));
       await repository.updateEmbedding(candidate.id, unitVector(0));
 
-      const results = await repository.findSimilar(source.id, 5000, 4);
+      const results = await repository.findSimilar(source.id, 5000, 4, NO_SIMILARITY_FILTER);
 
       expect(results.map((p) => p.id)).toEqual([candidate.id]);
     });
@@ -346,7 +385,7 @@ describe('createPetRepository (integration)', () => {
       const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
       await repository.save(buildCreateDto({ location: NEAR, status: 'found' })); // never calls updateEmbedding
 
-      const results = await repository.findSimilar(source.id, 5000, 4);
+      const results = await repository.findSimilar(source.id, 5000, 4, NO_SIMILARITY_FILTER);
 
       expect(results).toEqual([]);
     });
@@ -355,7 +394,7 @@ describe('createPetRepository (integration)', () => {
       const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
       await saveWithEmbedding({ location: NEAR }, 0); // ~100m north of CENTER
 
-      const [result] = await repository.findSimilar(source.id, 5000, 4);
+      const [result] = await repository.findSimilar(source.id, 5000, 4, NO_SIMILARITY_FILTER);
 
       expect(result.distanceMeters).toBeGreaterThan(50);
       expect(result.distanceMeters).toBeLessThan(200);
@@ -367,13 +406,13 @@ describe('createPetRepository (integration)', () => {
         await saveWithEmbedding({ location: NEAR }, 0);
       }
 
-      const results = await repository.findSimilar(source.id, 5000, 2);
+      const results = await repository.findSimilar(source.id, 5000, 2, NO_SIMILARITY_FILTER);
 
       expect(results).toHaveLength(2);
     });
 
     it('returns an empty array when the source petId does not exist', async () => {
-      const results = await repository.findSimilar(randomUUID(), 5000, 4);
+      const results = await repository.findSimilar(randomUUID(), 5000, 4, NO_SIMILARITY_FILTER);
 
       expect(results).toEqual([]);
     });
@@ -382,9 +421,29 @@ describe('createPetRepository (integration)', () => {
       const source = await repository.save(buildCreateDto({ location: CENTER })); // never calls updateEmbedding
       await saveWithEmbedding({ location: NEAR }, 0);
 
-      const results = await repository.findSimilar(source.id, 5000, 4);
+      const results = await repository.findSimilar(source.id, 5000, 4, NO_SIMILARITY_FILTER);
 
       expect(results).toEqual([]);
+    });
+
+    it('excludes a candidate below the minimum embedding similarity threshold', async () => {
+      const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
+      const tooDifferent = await repository.save(buildCreateDto({ location: NEAR, status: 'found' }));
+      await repository.updateEmbedding(tooDifferent.id, vectorWithSimilarity(0.5));
+
+      const results = await repository.findSimilar(source.id, 5000, 4, 0.8);
+
+      expect(results).toEqual([]);
+    });
+
+    it('includes a candidate at or above the minimum embedding similarity threshold', async () => {
+      const source = await saveWithEmbedding({ location: CENTER, status: 'missing' }, 0);
+      const similarEnough = await repository.save(buildCreateDto({ location: NEAR, status: 'found' }));
+      await repository.updateEmbedding(similarEnough.id, vectorWithSimilarity(0.9));
+
+      const results = await repository.findSimilar(source.id, 5000, 4, 0.8);
+
+      expect(results.map((p) => p.id)).toEqual([similarEnough.id]);
     });
   });
 

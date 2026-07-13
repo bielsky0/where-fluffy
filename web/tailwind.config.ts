@@ -74,6 +74,11 @@ export default {
         md: 'calc(var(--radius) - 4px)',
         sm: 'calc(var(--radius) - 8px)',
       },
+      // Spec'd once here as the single soft "floating card" shadow value (see Card in
+      // shared/ui/card) rather than reusing Tailwind's default `shadow-sm`/`shadow-lg` scale.
+      boxShadow: {
+        soft: '0 4px 16px rgba(0,0,0,0.08)',
+      },
       keyframes: {
         'sheet-slide-up': {
           from: { transform: 'translateY(100%)' },

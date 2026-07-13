@@ -52,6 +52,7 @@ describe('createFeedService', () => {
       save: jest.fn(),
       findNearLocation: jest.fn(),
       updateEmbedding: jest.fn(),
+      clearEmbedding: jest.fn(),
       findByOwnerId: jest.fn(),
       update: jest.fn(),
       updateStatus: jest.fn(),

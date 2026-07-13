@@ -3,9 +3,9 @@ import { EmbeddingConfig } from './embedding.config.js';
 
 const buildConfig = (overrides: Partial<EmbeddingConfig> = {}): EmbeddingConfig => ({
   EMBEDDING_PROVIDER: 'fake',
-  EMBEDDING_SERVICE_URL: 'http://localhost:11434',
-  EMBEDDING_MODEL: 'nomic-embed-text',
+  EMBEDDING_SERVICE_URL: 'http://localhost:8000',
   EMBEDDING_TIMEOUT_MS: 10_000,
+  EMBEDDING_IMAGE_TIMEOUT_MS: 30_000,
   EMBEDDING_DIMENSIONS: 8,
   ...overrides,
 });
@@ -30,7 +30,7 @@ describe('createEmbeddingProvider', () => {
     const vector = await provider.generateEmbedding('test');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:11434/api/embeddings',
+      'http://localhost:8000/embed/text',
       expect.objectContaining({ method: 'POST' }),
     );
     expect(vector).toEqual([1, 2, 3]);

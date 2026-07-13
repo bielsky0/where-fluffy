@@ -71,17 +71,6 @@ export function Footer({ onAddListing }: FooterProps) {
           <span>© {new Date().getFullYear()} Where&apos;s Fluffy. Wszelkie prawa zastrzeżone.</span>
         </div>
       </footer>
-
-      <div className="fixed inset-x-0 bottom-0 z-[1100] border-t border-gray-200 bg-white px-6 py-3 pb-safe">
-        <Button
-          type="button"
-          onClick={onAddListing}
-          className="mx-auto flex w-full max-w-md gap-1.5 rounded-full bg-coral text-white hover:bg-coral-hover"
-        >
-          <PlusIcon className="size-4" />
-          Dodaj ogłoszenie
-        </Button>
-      </div>
     </>
   );
 }

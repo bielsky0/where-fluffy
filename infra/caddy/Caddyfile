@@ -12,6 +12,12 @@
 		reverse_proxy api:3000
 	}
 
+	# Browser OTLP trace exporter (web/src/lib/telemetry.ts) posts here same-origin, so no CORS
+	# config is needed on Alloy's otlp http receiver (infra/alloy/config.alloy).
+	handle /v1/traces {
+		reverse_proxy alloy:4318
+	}
+
 	handle {
 		reverse_proxy web:80
 	}

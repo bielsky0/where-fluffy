@@ -96,10 +96,15 @@ services:
     build:
       context: ./web
       args:
-        # Defaults match the code's own fallbacks (apiClient.ts / telemetry.ts) — leaving these
+        # VITE_API_BASE_URL's default matches the code's own fallback (apiClient.ts) — leaving it
         # unset in .env.production keeps behavior identical to today.
         VITE_API_BASE_URL: "${VITE_API_BASE_URL:-/api/v1}"
-        VITE_OTEL_EXPORTER_OTLP_ENDPOINT: "${VITE_OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318/v1/traces}"
+        # telemetry.ts's own fallback (http://localhost:4318/v1/traces) only makes sense for local
+        # dev, where it's the visitor's own machine talking to a docker-published port. In
+        # production the exporter runs in the *visitor's* browser, so it must point at this
+        # deployment's own public domain (Caddy proxies /v1/traces to alloy:4318 — see
+        # infra/caddy/Caddyfile) rather than the visitor's localhost.
+        VITE_OTEL_EXPORTER_OTLP_ENDPOINT: "${VITE_OTEL_EXPORTER_OTLP_ENDPOINT:-https://${DOMAIN}/v1/traces}"
     restart: unless-stopped
     networks:
       - fluffy-net

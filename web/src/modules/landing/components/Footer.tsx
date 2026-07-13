@@ -4,9 +4,7 @@
 // BOTTOM_NAV_CLEARANCE.
 export const LANDING_CTA_CLEARANCE = 'calc(4.5rem + env(safe-area-inset-bottom))';
 
-interface FooterProps {
-  onAddListing: () => void;
-}
+
 
 // href: null items have no dedicated page yet (no About/Support/Terms/Privacy routes exist
 // anywhere in the app today) — rendered as plain static text rather than a dead `href="#"` link.
@@ -36,7 +34,7 @@ const COLUMNS = [
 // Airbnb-style footer + the page's persistent "+ Dodaj ogłoszenie" CTA. Both live in one file
 // because the fixed CTA bar's height is what LANDING_CTA_CLEARANCE compensates for in the
 // footer's own trailing padding — same relationship BottomNav.tsx documents for its own bar.
-export function Footer({ onAddListing }: FooterProps) {
+export function Footer() {
   return (
     <>
       <footer

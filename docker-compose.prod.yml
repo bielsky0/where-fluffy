@@ -118,7 +118,13 @@ services:
     environment:
       DOMAIN: "${DOMAIN:?DOMAIN must be set, e.g. example.com}"
     volumes:
-      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Directory mount, deliberately NOT a single-file mount of the Caddyfile: Docker binds a
+      # single file by inode, and `git pull` replaces files via write+rename (new inode), so a
+      # file-mounted container keeps seeing the pre-pull content forever — `caddy reload` and
+      # even `docker compose restart proxy` then reload the stale config. A directory mount
+      # resolves the path on every read, so the CI deploy's `caddy reload` (see
+      # .github/workflows/ci.yml) always picks up the freshly pulled file.
+      - ./infra/caddy:/etc/caddy:ro
       - caddy-data:/data
       - caddy-config:/config
     ports:

@@ -98,6 +98,13 @@ jobs:
             cd ~/where-fluffy
             git pull
             docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+            # Caddy doesn't watch its mounted config, and `up -d` won't recreate `proxy` when only
+            # the bind-mounted Caddyfile's content changed — a graceful zero-downtime reload is
+            # needed explicitly on every deploy (no-op when the config is unchanged). Works only
+            # because docker-compose.prod.yml mounts the infra/caddy *directory*, not the single
+            # file — see the comment on the proxy service's volumes for the inode gotcha.
+            docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml \
+              exec -T proxy caddy reload --config /etc/caddy/Caddyfile
             set -a; source .env.production; set +a
             docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml \
               exec -T -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB" \

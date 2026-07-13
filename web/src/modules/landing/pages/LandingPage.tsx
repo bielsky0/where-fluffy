@@ -21,7 +21,7 @@ export default function LandingPage() {
       <SmartAlertSection />
       <ShowcaseSection />
       <FaqSection />
-      <Footer onAddListing={goToApp} />
+      <Footer />
     </main>
   );
 }

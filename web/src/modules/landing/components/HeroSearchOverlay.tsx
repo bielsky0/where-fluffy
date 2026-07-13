@@ -77,7 +77,11 @@ export function HeroSearchOverlay({ open, onClose, onSelectLocation, onUseMyLoca
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-          className="fixed inset-0 z-[1000] flex flex-col bg-white pt-safe"
+          // z-[1200]: must beat Footer's persistent "+ Dodaj ogłoszenie" bar (z-[1100], stays
+          // mounted underneath this overlay), same tier AddListingWizard/ReportSightingSheet use
+          // to clear BottomNav/GuestTabBar for the same reason — otherwise the CTA bar's higher
+          // z-index paints over this overlay's own bottom "Szukaj" button.
+          className="fixed inset-0 z-[1200] flex flex-col bg-white pt-safe"
         >
           <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3">
             <div className="flex flex-1 items-center gap-2 rounded-full bg-neutral-100 px-4 py-3">

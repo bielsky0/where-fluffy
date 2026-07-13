@@ -1,15 +1,10 @@
-import { Button } from '@/shared/ui';
-import { PlusIcon } from './icons';
-
 // Height reserved for the fixed "+ Dodaj ogłoszenie" bar below (excluding the safe-area inset,
 // added separately via pb-safe on the bar itself) — applied as the footer's own trailing
 // padding so its last row never sits hidden underneath the bar. Same pattern as BottomNav.tsx's
 // BOTTOM_NAV_CLEARANCE.
 export const LANDING_CTA_CLEARANCE = 'calc(4.5rem + env(safe-area-inset-bottom))';
 
-interface FooterProps {
-  onAddListing: () => void;
-}
+
 
 // href: null items have no dedicated page yet (no About/Support/Terms/Privacy routes exist
 // anywhere in the app today) — rendered as plain static text rather than a dead `href="#"` link.
@@ -39,7 +34,7 @@ const COLUMNS = [
 // Airbnb-style footer + the page's persistent "+ Dodaj ogłoszenie" CTA. Both live in one file
 // because the fixed CTA bar's height is what LANDING_CTA_CLEARANCE compensates for in the
 // footer's own trailing padding — same relationship BottomNav.tsx documents for its own bar.
-export function Footer({ onAddListing }: FooterProps) {
+export function Footer() {
   return (
     <>
       <footer
@@ -71,17 +66,6 @@ export function Footer({ onAddListing }: FooterProps) {
           <span>© {new Date().getFullYear()} Where&apos;s Fluffy. Wszelkie prawa zastrzeżone.</span>
         </div>
       </footer>
-
-      <div className="fixed inset-x-0 bottom-0 z-[1100] border-t border-gray-200 bg-white px-6 py-3 pb-safe">
-        <Button
-          type="button"
-          onClick={onAddListing}
-          className="mx-auto flex w-full max-w-md gap-1.5 rounded-full bg-coral text-white hover:bg-coral-hover"
-        >
-          <PlusIcon className="size-4" />
-          Dodaj ogłoszenie
-        </Button>
-      </div>
     </>
   );
 }

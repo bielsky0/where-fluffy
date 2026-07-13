@@ -90,6 +90,7 @@ const buildMockPetRepository = (): jest.Mocked<PetRepository> => ({
   save: jest.fn(),
   findNearLocation: jest.fn(),
   updateEmbedding: jest.fn(),
+  clearEmbedding: jest.fn(),
   findByOwnerId: jest.fn(),
   update: jest.fn(),
   updateStatus: jest.fn(),
@@ -275,7 +276,7 @@ describe('pets controller (via supertest)', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual([expect.objectContaining({ id: 'pet-2', distanceMeters: 500 })]);
-      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 15_000, 4);
+      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 15_000, 4, 0.8);
     });
 
     it('returns 200 with an empty array when nothing similar is found nearby', async () => {
@@ -294,7 +295,7 @@ describe('pets controller (via supertest)', () => {
 
       await request(app).get('/pets/pet-1/similar?radius=5000');
 
-      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 5000, 4);
+      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 5000, 4, 0.8);
     });
 
     it('returns 400 for an invalid radius query param', async () => {

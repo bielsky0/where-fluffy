@@ -9,9 +9,9 @@ import { logger } from '../infrastructure/logger.js';
 
 const config: EmbeddingConfig = {
   EMBEDDING_PROVIDER: 'local',
-  EMBEDDING_SERVICE_URL: 'http://ai-model:11434',
-  EMBEDDING_MODEL: 'nomic-embed-text',
+  EMBEDDING_SERVICE_URL: 'http://ai-model:8000',
   EMBEDDING_TIMEOUT_MS: 5_000,
+  EMBEDDING_IMAGE_TIMEOUT_MS: 15_000,
   EMBEDDING_DIMENSIONS: 3,
 };
 
@@ -21,7 +21,7 @@ describe('createLocalEmbeddingProvider', () => {
     jest.clearAllMocks();
   });
 
-  it('requests the embedding from the configured service and returns it on success', async () => {
+  it('requests a text embedding from the sidecar and returns it on success', async () => {
     const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({ embedding: [0.1, 0.2, 0.3] }),
@@ -31,13 +31,33 @@ describe('createLocalEmbeddingProvider', () => {
     const vector = await provider.generateEmbedding('lost dog');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://ai-model:11434/api/embeddings',
+      'http://ai-model:8000/embed/text',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ model: 'nomic-embed-text', prompt: 'lost dog' }),
+        body: JSON.stringify({ text: 'lost dog' }),
       }),
     );
     expect(vector).toEqual([0.1, 0.2, 0.3]);
+  });
+
+  it('requests an image embedding for a set of photo URLs and returns the single pooled vector', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ embedding: [0.4, 0.5, 0.6] }),
+    } as Response);
+    const urls = ['https://res.cloudinary.com/demo/pets/a.webp', 'https://res.cloudinary.com/demo/pets/b.webp'];
+
+    const provider = createLocalEmbeddingProvider(config);
+    const vector = await provider.generateImageEmbedding(urls);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://ai-model:8000/embed/image',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ urls }),
+      }),
+    );
+    expect(vector).toEqual([0.4, 0.5, 0.6]);
   });
 
   it('retries a transient failure and succeeds on a later attempt', async () => {
@@ -53,7 +73,7 @@ describe('createLocalEmbeddingProvider', () => {
     expect(vector).toEqual([1, 1, 1]);
   }, 10_000);
 
-  it('logs [CRITICAL_AI_ERROR] and rethrows once retries are exhausted', async () => {
+  it('logs [CRITICAL_AI_ERROR] and rethrows once text-embedding retries are exhausted', async () => {
     const failure = new Error('model unavailable');
     jest.spyOn(global, 'fetch').mockRejectedValue(failure);
 
@@ -62,6 +82,21 @@ describe('createLocalEmbeddingProvider', () => {
     await expect(provider.generateEmbedding('lost parrot')).rejects.toThrow('model unavailable');
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ err: failure, textLength: 'lost parrot'.length }),
+      expect.stringContaining('[CRITICAL_AI_ERROR]'),
+    );
+  }, 10_000);
+
+  it('logs [CRITICAL_AI_ERROR] with the image count and rethrows once image-embedding retries are exhausted', async () => {
+    const failure = new Error('model unavailable');
+    jest.spyOn(global, 'fetch').mockRejectedValue(failure);
+
+    const provider = createLocalEmbeddingProvider(config);
+
+    await expect(
+      provider.generateImageEmbedding(['https://res.cloudinary.com/demo/pets/a.webp']),
+    ).rejects.toThrow('model unavailable');
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: failure, imageCount: 1 }),
       expect.stringContaining('[CRITICAL_AI_ERROR]'),
     );
   }, 10_000);

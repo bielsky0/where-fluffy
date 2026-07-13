@@ -110,7 +110,7 @@ services:
       # against ai-worker/ai-model, see search.repository.ts's <=> query). ai-model is
       # deliberately NOT in this service's depends_on: semantic search must degrade (503, see
       # search.service.ts) rather than block api startup on the model container being healthy.
-      EMBEDDING_SERVICE_URL: "http://ai-model:11434"
+      EMBEDDING_SERVICE_URL: "http://ai-model:8000"
       EMBEDDING_PROVIDER: "local"
       # Content Seeding admin allowlist (see shared/config/admin.config.ts) — empty by default,
       # same non-throwing pattern as the code's own Zod default, so leaving this unset in .env
@@ -131,19 +131,23 @@ services:
     networks:
       - fluffy-net
 
-  # Vector AI & Embedding Pipeline — self-hosted embedding model (Ollama + nomic-embed-text,
-  # 768 dims), zero paid third-party AI APIs. Model is baked into the image at build time
-  # (infra/ai-model/Dockerfile), not pulled at container startup, so first boot is immediately
-  # ready to serve embeddings.
+  # Vector AI & Embedding Pipeline — self-hosted embedding sidecar (FastAPI + aligned nomic
+  # v1.5 towers: text for query-time search, vision for pet photos), zero paid third-party AI
+  # APIs. Replaced Ollama, whose embeddings API cannot take images. Model weights are baked into
+  # the image at build time (infra/ai-model/Dockerfile), not pulled at container startup, so
+  # first boot is immediately ready to serve embeddings. Single Uvicorn process + an internal
+  # inference semaphore (see infra/ai-model/main.py) keep peak RAM bounded under the 2G limit —
+  # do NOT scale this by adding Gunicorn workers, each one would duplicate both models in RAM.
   ai-model:
     build:
       context: ./infra/ai-model
     image: where-fluffy/ai-model:latest
     restart: unless-stopped
-    volumes:
-      - ollama-data:/root/.ollama
+    environment:
+      # Keep in sync with this service's cpus limit below (read by torch.set_num_threads).
+      TORCH_NUM_THREADS: "2"
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -151,7 +155,7 @@ services:
       resources:
         limits:
           cpus: "2.0"
-          memory: 4G
+          memory: 2G
     networks:
       - fluffy-net
 
@@ -168,7 +172,7 @@ services:
       OTEL_SERVICE_NAME: "where-fluffy-ai-worker"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy:4317"
       NODE_ENV: production
-      EMBEDDING_SERVICE_URL: "http://ai-model:11434"
+      EMBEDDING_SERVICE_URL: "http://ai-model:8000"
       EMBEDDING_PROVIDER: "local"
       AI_WORKER_CONCURRENCY: "2"
     restart: unless-stopped
@@ -324,7 +328,6 @@ volumes:
   prometheus-data:
   grafana-data:
   alloy-data:
-  ollama-data:
 
 networks:
   fluffy-net:

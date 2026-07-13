@@ -86,6 +86,15 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     return affected > 0 ? 'updated' : 'not_found';
   };
 
+  // Vision-only: zwierzak bez zdjęć ma mieć embedding NULL (patrz embed-pet-data.processor.ts).
+  // Te same zasady co updateEmbedding powyżej: zawsze UPDATE, bez dotykania "updatedAt".
+  const clearEmbedding: PetRepository['clearEmbedding'] = async (petId) => {
+    const affected = await prisma.$executeRaw`
+      UPDATE "Pet" SET embedding = NULL WHERE id = ${petId}
+    `;
+    return affected > 0 ? 'updated' : 'not_found';
+  };
+
   const findByOwnerId = async (ownerId: string): Promise<IPet[]> => {
     const pets = await prisma.$queryRaw<RawPetRow[]>`
       SELECT ${RETURNING_COLUMNS}
@@ -154,7 +163,11 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
   // source.embedding lub source.location jest NULL (zwierzak jeszcze nieprzetworzony przez
   // ai-worker albo, teoretycznie, bez lokalizacji) -> odfiltrowane explicit warunkami; brak
   // kandydatów w promieniu/statusie -> naturalne 0 wierszy.
-  const findSimilar: PetRepository['findSimilar'] = async (petId, radiusInMeters, limit) => {
+  const findSimilar: PetRepository['findSimilar'] = async (petId, radiusInMeters, limit, minSimilarity) => {
+    // pgvector's <=> is cosine DISTANCE (1 - cosine similarity) for normalized vectors — every
+    // embedding written by the pipeline is L2-normalized (see infra/ai-model/vector_math.py), so
+    // this conversion is exact, not an approximation.
+    const maxDistance = 1 - minSimilarity;
     const rows = await prisma.$queryRaw<RawSimilarPetRow[]>`
       WITH source AS (
         SELECT location, embedding, status FROM "Pet" WHERE id = ${petId}
@@ -173,6 +186,7 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
         AND source.embedding IS NOT NULL
         AND source.location IS NOT NULL
         AND ST_DWithin(p.location, source.location, ${radiusInMeters})
+        AND p.embedding <=> source.embedding <= ${maxDistance}
       ORDER BY p.embedding <=> source.embedding
       LIMIT ${limit};
     `;
@@ -192,6 +206,7 @@ export const createPetRepository = (prisma: PrismaClient): PetRepository => {
     save,
     findNearLocation,
     updateEmbedding,
+    clearEmbedding,
     findByOwnerId,
     update,
     updateStatus,

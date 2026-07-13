@@ -26,12 +26,12 @@ export type PetsService = {
 const SIMILAR_PETS_LIMIT = 4;
 // Środek zakresu 10-20km ze specyfikacji.
 const DEFAULT_SIMILAR_RADIUS_M = 15_000;
+// Poniżej tego cosine similarity kandydat jest zbyt różny wizualnie, żeby liczyć się jako
+// "podobny zwierzak" — zweryfikowane manualnie: 0.919 (to samo zdjęcie/produkt z innego ujęcia)
+// zostaje, 0.731 (kompletnie inny obiekt) odpada. Wartość startowa, do skalibrowania później na
+// prawdziwych zdjęciach zwierząt z produkcji — obecna próbka to tylko 4 zdjęcia produktowe.
+const MIN_EMBEDDING_SIMILARITY = 0.8;
 
-// Pola, które faktycznie wpływają na tekst embeddingu (patrz ai-worker/embed-pet-data.processor.ts
-// — konkatenuje name/species/category/distinguishingMarks). `category` podąża za `species`, więc
-// zmiana samego species też wymaga re-enqueue. reward/phone/email/photos/city są dla embeddingu
-// nieistotne.
-const EMBEDDING_RELEVANT_FIELDS = ['name', 'species', 'distinguishingMarks'] as const;
 
 export const createPetsService = (
   petRepository: PetRepository,
@@ -136,9 +136,13 @@ export const createPetsService = (
       ),
     );
 
-    const embeddingRelevantChange = EMBEDDING_RELEVANT_FIELDS.some(
-      (field) => dto[field] !== undefined && dto[field] !== pet[field],
-    );
+    // Embedding jest vision-only (patrz ai-worker/embed-pet-data.processor.ts) — re-embedding ma
+    // sens tylko przy zmianie zestawu/kolejności zdjęć. Pola tekstowe (name/species/
+    // distinguishingMarks) nie wpływają już na wektor; reward/phone/email/city nigdy nie wpływały.
+    const embeddingRelevantChange =
+      photoUrls !== undefined &&
+      (photoUrls.length !== pet.photoUrls.length ||
+        photoUrls.some((url, index) => url !== pet.photoUrls[index]));
     if (embeddingRelevantChange) {
       try {
         await petEmbeddingQueue.enqueueEmbedPetData(petId);
@@ -177,13 +181,18 @@ export const createPetsService = (
   };
 
   // "Podobne zwierzęta w okolicy": brak throw dla jakiegokolwiek przypadku "brak wyników"
-  // (nieistniejący petId, zwierzak jeszcze bez embeddingu, zero trafień w promieniu) — repository
-  // już gwarantuje [] dla każdego z nich (patrz pets.repository.ts's findSimilar), więc sekcja na
-  // froncie po prostu się nie renderuje, bez specjalnej obsługi błędu. Prawdziwa awaria bazy
-  // propaguje się jako 500 przez asyncHandler/error.middleware.ts — to jedyny "błąd" ten endpoint
-  // kiedykolwiek zwraca.
+  // (nieistniejący petId, zwierzak jeszcze bez embeddingu, zero trafień w promieniu, wszyscy
+  // kandydaci poniżej MIN_EMBEDDING_SIMILARITY) — repository już gwarantuje [] dla każdego z nich
+  // (patrz pets.repository.ts's findSimilar), więc sekcja na froncie po prostu się nie renderuje,
+  // bez specjalnej obsługi błędu. Prawdziwa awaria bazy propaguje się jako 500 przez
+  // asyncHandler/error.middleware.ts — to jedyny "błąd" ten endpoint kiedykolwiek zwraca.
   const getSimilarPets = async (petId: string, radius?: number): Promise<SimilarPetResponseDTO[]> => {
-    const pets = await petRepository.findSimilar(petId, radius ?? DEFAULT_SIMILAR_RADIUS_M, SIMILAR_PETS_LIMIT);
+    const pets = await petRepository.findSimilar(
+      petId,
+      radius ?? DEFAULT_SIMILAR_RADIUS_M,
+      SIMILAR_PETS_LIMIT,
+      MIN_EMBEDDING_SIMILARITY,
+    );
     return pets.map(mapToSimilarResponseDTO);
   };
 

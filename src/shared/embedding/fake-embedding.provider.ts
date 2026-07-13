@@ -20,7 +20,9 @@ const l2Normalize = (vector: number[]): number[] => {
 // Dev/CI default — zero network calls, zero external deps beyond Node's built-in `crypto`.
 // Deterministic (same input text always yields the same vector) so integration tests can assert
 // exact `ORDER BY embedding <=> ...` ranking, and so the whole enqueue -> worker -> pgvector
-// write -> search pipeline is exercisable end-to-end without a self-hosted model running.
+// write -> search pipeline is exercisable end-to-end without the self-hosted sidecar running.
+// Lokalny l2Normalize to matematyka czysto testowa — produkcyjna normalizacja/pooling żyją
+// wyłącznie w sidecarze (infra/ai-model/vector_math.py), patrz komentarz w interfejsie.
 export const createFakeEmbeddingProvider = (dimensions = 768): EmbeddingProvider => {
   const generateEmbedding: EmbeddingProvider['generateEmbedding'] = async (text) => {
     const digest = createHash('sha256').update(text).digest();
@@ -31,5 +33,10 @@ export const createFakeEmbeddingProvider = (dimensions = 768): EmbeddingProvider
     return l2Normalize(vector);
   };
 
-  return { generateEmbedding };
+  // Ten sam deterministyczny hash co dla tekstu, po sklejonych URL-ach — ten sam zestaw zdjęć
+  // zawsze daje ten sam wektor, więc worker-owy pipeline testuje się bez prawdziwego modelu.
+  const generateImageEmbedding: EmbeddingProvider['generateImageEmbedding'] = (imageUrls) =>
+    generateEmbedding(imageUrls.join('\n'));
+
+  return { generateEmbedding, generateImageEmbedding };
 };

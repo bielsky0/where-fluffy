@@ -86,11 +86,15 @@ model Pet {
   location  Unsupported("geography(Point, 4326)")?
 
   // Wektor embeddingu do wyszukiwania semantycznego (patrz Vector AI & Embedding Pipeline).
-  // 768 wymiarów, żeby pasować do samohostowanego modelu nomic-embed-text (Ollama), nie do
-  // OpenAI text-embedding-3-small (1536) — ten projekt nie korzysta z płatnych API AI stron
-  // trzecich. Unsupported(...) z tego samego powodu co "location" powyżej: preview feature
-  // postgresqlExtensions nie ma pierwszoklasowego wsparcia dla typu vector/indeksu HNSW, więc
-  // wszystkie odczyty/zapisy idą przez surowe SQL (patrz pets.repository.ts / search.repository.ts).
+  // Vision-only: liczony WYŁĄCZNIE ze zdjęć zwierzaka (max 5 pierwszych, patrz
+  // ai-worker/embed-pet-data.processor.ts) przez samohostowany sidecar (infra/ai-model);
+  // zwierzak bez zdjęć ma tu NULL. 768 wymiarów, bo tyle mają obie wyrównane wieże nomic v1.5
+  // (vision dla zdjęć, text dla zapytań z modułu search — dzielą jedną przestrzeń, stąd tekstowe
+  // zapytanie dopasowuje się do wektorów zdjęć), nie OpenAI text-embedding-3-small (1536) — ten
+  // projekt nie korzysta z płatnych API AI stron trzecich. Unsupported(...) z tego samego powodu
+  // co "location" powyżej: preview feature postgresqlExtensions nie ma pierwszoklasowego wsparcia
+  // dla typu vector/indeksu HNSW, więc wszystkie odczyty/zapisy idą przez surowe SQL (patrz
+  // pets.repository.ts / search.repository.ts).
   embedding Unsupported("vector(768)")?
 
   createdAt DateTime @default(now())

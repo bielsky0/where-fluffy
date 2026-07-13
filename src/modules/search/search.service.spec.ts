@@ -32,7 +32,7 @@ describe('createSearchService', () => {
 
   beforeEach(() => {
     mockSearchRepository = { findSimilar: jest.fn() };
-    mockEmbeddingProvider = { generateEmbedding: jest.fn() };
+    mockEmbeddingProvider = { generateEmbedding: jest.fn(), generateImageEmbedding: jest.fn() };
   });
 
   it('embeds the query, forwards the vector/limit to the repository, and maps results to DTOs', async () => {

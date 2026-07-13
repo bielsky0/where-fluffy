@@ -36,4 +36,24 @@ describe('createFakeEmbeddingProvider', () => {
 
     expect(magnitude).toBeCloseTo(1, 5);
   });
+
+  it('generates a deterministic image embedding for the same set of photo URLs', async () => {
+    const provider = createFakeEmbeddingProvider(768);
+    const urls = ['https://res.cloudinary.com/demo/pets/a.webp', 'https://res.cloudinary.com/demo/pets/b.webp'];
+
+    const first = await provider.generateImageEmbedding(urls);
+    const second = await provider.generateImageEmbedding(urls);
+
+    expect(first).toHaveLength(768);
+    expect(first).toEqual(second);
+  });
+
+  it('produces different image embeddings for different photo sets', async () => {
+    const provider = createFakeEmbeddingProvider(768);
+
+    const rex = await provider.generateImageEmbedding(['https://res.cloudinary.com/demo/pets/rex.webp']);
+    const mruczek = await provider.generateImageEmbedding(['https://res.cloudinary.com/demo/pets/mruczek.webp']);
+
+    expect(rex).not.toEqual(mruczek);
+  });
 });

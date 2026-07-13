@@ -52,6 +52,7 @@ describe('createPetsService', () => {
       save: jest.fn(),
       findNearLocation: jest.fn(),
       updateEmbedding: jest.fn(),
+      clearEmbedding: jest.fn(),
       findByOwnerId: jest.fn(),
       update: jest.fn(),
       updateStatus: jest.fn(),
@@ -417,33 +418,49 @@ describe('createPetsService', () => {
       ).resolves.toBeDefined();
     });
 
-    it('re-enqueues the embedding job when name changes', async () => {
-      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1', name: 'Rex' }));
-      mockRepository.update.mockResolvedValue(buildPet({ name: 'Max' }));
+    it('re-enqueues the embedding job when the photo set changes (vision-only pipeline)', async () => {
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1', photoUrls: ['existing-a'] }));
+      mockImageStorageProvider.upload.mockResolvedValue('stored-new');
+      mockRepository.update.mockResolvedValue(buildPet());
       const service = createPetsService(mockRepository, mockImageStorageProvider, mockGeocodingService, mockPetEmbeddingQueue);
 
-      await service.updatePet('pet-1', 'owner-1', { name: 'Max' });
+      await service.updatePet('pet-1', 'owner-1', { photoBase64s: ['existing-a', 'brand-new'] });
 
       expect(mockPetEmbeddingQueue.enqueueEmbedPetData).toHaveBeenCalledWith('pet-1');
     });
 
-    it('does not re-enqueue the embedding job for embedding-irrelevant changes only', async () => {
-      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1', reward: 100 }));
-      mockRepository.update.mockResolvedValue(buildPet({ reward: 500 }));
+    it('does not re-enqueue the embedding job for text-only changes (name/species/marks no longer feed the vector)', async () => {
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1', name: 'Rex', reward: 100 }));
+      mockRepository.update.mockResolvedValue(buildPet({ name: 'Max', reward: 500 }));
       const service = createPetsService(mockRepository, mockImageStorageProvider, mockGeocodingService, mockPetEmbeddingQueue);
 
-      await service.updatePet('pet-1', 'owner-1', { reward: 500 });
+      await service.updatePet('pet-1', 'owner-1', { name: 'Max', reward: 500, distinguishingMarks: 'Nowa łatka' });
+
+      expect(mockPetEmbeddingQueue.enqueueEmbedPetData).not.toHaveBeenCalled();
+    });
+
+    it('does not re-enqueue the embedding job when the resubmitted photo set is unchanged', async () => {
+      mockRepository.findById.mockResolvedValue(
+        buildPet({ ownerId: 'owner-1', photoUrls: ['existing-a', 'existing-b'] }),
+      );
+      mockRepository.update.mockResolvedValue(buildPet());
+      const service = createPetsService(mockRepository, mockImageStorageProvider, mockGeocodingService, mockPetEmbeddingQueue);
+
+      await service.updatePet('pet-1', 'owner-1', { photoBase64s: ['existing-a', 'existing-b'] });
 
       expect(mockPetEmbeddingQueue.enqueueEmbedPetData).not.toHaveBeenCalled();
     });
 
     it('does not fail the request when the embedding re-enqueue throws', async () => {
-      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1', name: 'Rex' }));
-      mockRepository.update.mockResolvedValue(buildPet({ name: 'Max' }));
+      mockRepository.findById.mockResolvedValue(buildPet({ ownerId: 'owner-1', photoUrls: ['existing-a'] }));
+      mockImageStorageProvider.upload.mockResolvedValue('stored-new');
+      mockRepository.update.mockResolvedValue(buildPet());
       mockPetEmbeddingQueue.enqueueEmbedPetData.mockRejectedValue(new Error('redis unavailable'));
       const service = createPetsService(mockRepository, mockImageStorageProvider, mockGeocodingService, mockPetEmbeddingQueue);
 
-      await expect(service.updatePet('pet-1', 'owner-1', { name: 'Max' })).resolves.toBeDefined();
+      await expect(
+        service.updatePet('pet-1', 'owner-1', { photoBase64s: ['brand-new'] }),
+      ).resolves.toBeDefined();
     });
   });
 
@@ -481,7 +498,7 @@ describe('createPetsService', () => {
 
       const result = await service.getSimilarPets('pet-1');
 
-      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 15_000, 4);
+      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 15_000, 4, 0.8);
       expect(result).toEqual([
         {
           id: 'pet-2',
@@ -513,7 +530,7 @@ describe('createPetsService', () => {
 
       await service.getSimilarPets('pet-1', 5000);
 
-      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 5000, 4);
+      expect(mockRepository.findSimilar).toHaveBeenCalledWith('pet-1', 5000, 4, 0.8);
     });
 
     it('returns an empty array, not an error, when the repository finds nothing', async () => {

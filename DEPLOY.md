@@ -46,12 +46,17 @@ docker compose --env-file .env.production -f docker-compose.yml -f docker-compos
 
 ## 5. Znane ograniczenia (świadomie nienaprawione w tym przebiegu)
 
-- **Traces z przeglądarki nie mają dziś dokąd polecieć w produkcji.** `alloy` jest w
-  `docker-compose.prod.yml` całkowicie odpięty od publicznego portu, a `infra/caddy/Caddyfile`
-  nie ma trasy do niego — nawet po ustawieniu `VITE_OTEL_EXPORTER_OTLP_ENDPOINT` przeglądarka
-  nie ma jak dobić do kolektora. Żeby to naprawić: dodać trasę w Caddyfile (np.
-  `handle /otlp/* { reverse_proxy alloy:4318 }`) i ustawić `VITE_OTEL_EXPORTER_OTLP_ENDPOINT`
-  odpowiednio. Do tego czasu to znana, nieblokująca funkcja no-op.
+- **Zmiana `infra/caddy/Caddyfile` nie łapie się sama** — Caddy nie obserwuje pliku
+  konfiguracyjnego, a `up -d` nie odtwarza kontenera `proxy`, gdy zmieniła się tylko treść
+  bind-mountowanego pliku. Deploy z CI (`.github/workflows/ci.yml`) robi po `up -d` jawny
+  `caddy reload`; przy ręcznej zmianie na hoście zrób to samo:
+  ```bash
+  docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml \
+    exec proxy caddy reload --config /etc/caddy/Caddyfile
+  ```
+  Reload widzi świeży plik tylko dlatego, że montowany jest cały katalog `infra/caddy/` —
+  mount pojedynczego pliku trzyma się inode'a i po `git pull` (write+rename) kontener na zawsze
+  widziałby starą zawartość, nawet po `docker compose restart proxy`.
 - **`NOMINATIM_USER_AGENT`/`PHOTON_USER_AGENT`** mają placeholder z przykładowym mailem jako
   domyślną wartość — ustaw je w `.env.production` na realny kontaktowy adres przed realnym
   ruchem (wymóg polityki użycia obu usług geokodowania).
